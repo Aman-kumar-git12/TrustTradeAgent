@@ -25,19 +25,20 @@ def _env_flag(name: str, default: bool) -> bool:
 
 @dataclass(frozen=True)
 class Settings:
-    agent_name: str = os.getenv('AGENT_NAME', 'TrustTrade AI Agent')
-    agent_source: str = os.getenv('AGENT_SOURCE', 'python-agent')
-    default_role: str = os.getenv('AGENT_DEFAULT_ROLE', 'member')
-    max_history: int = int(os.getenv('AGENT_MAX_HISTORY', '8'))
-    knowledge_init_wait_seconds: float = float(os.getenv('KNOWLEDGE_INIT_WAIT_SECONDS', '0.35'))
-    enable_semantic_search: bool = _env_flag('ENABLE_SEMANTIC_SEARCH', sys.platform != 'darwin')
+    agent_name: str = 'TrustTrade AI Agent'
+    agent_source: str = 'python-agent'
+    default_role: str = 'member'
+    max_history: int = 8
+    knowledge_init_wait_seconds: float = 0.35
+    enable_semantic_search: bool = sys.platform != 'darwin'
     groq_api_key: str = os.getenv('GROQ_API_KEY', '')
-    groq_model: str = os.getenv('GROQ_MODEL', 'llama-3.3-70b-versatile')
+    groq_model: str = 'llama-3.3-70b-versatile'
     
     # MongoDB Configuration
-    mongodb_uri: str = os.getenv('MONGODB_URI', 'mongodb://localhost:27017/trusttrade')
-    database_name: str = os.getenv('DATABASE_NAME', 'trusttrade')
-    knowledge_collection_name: str = os.getenv('KNOWLEDGE_COLLECTION_NAME', 'knowledges')
+    mongodb_uri: str = os.getenv('MONGODB_URL', os.getenv('MONGODB_URI', 'mongodb://localhost:27017/trusttrade'))
+    database_name: str = 'assetdirect'
+    knowledge_collection_name: str = 'knowledges'
+    conversation_collection_name: str = 'conversations'
 
 
 settings = Settings()

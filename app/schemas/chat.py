@@ -19,6 +19,7 @@ class AgentReply(BaseModel):
     reply: str
     quick_replies: List[str] = Field(default_factory=list, alias='quickReplies')
     source: str = 'python-agent'
+    session_id: Optional[str] = Field(None, alias='sessionId')
 
     class Config:
         populate_by_name = True
@@ -32,6 +33,7 @@ class AgentReply(BaseModel):
 class UserInfo(BaseModel):
     fullName: str = ''
     role: str = 'member'
+    id: Optional[str] = None
 
 
 class ChatRequest(BaseModel):
@@ -39,3 +41,4 @@ class ChatRequest(BaseModel):
     website_context: Optional[str] = ''
     user: Optional[UserInfo] = Field(default_factory=UserInfo)
     history: List[ChatMessage] = Field(default_factory=list)
+    session_id: Optional[str] = Field(None, alias='sessionId')

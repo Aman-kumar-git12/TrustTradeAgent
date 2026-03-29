@@ -1,0 +1,20 @@
+INFO:     Will watch for changes in these directories: ['/Users/amankumar/Desktop/TrustTrade/Agent']
+INFO:     Uvicorn running on http://0.0.0.0:8000 (Press CTRL+C to quit)
+INFO:     Started reloader process [99558] using StatReload
+INFO:     Started server process [99652]
+INFO:     Waiting for application startup.
+INFO:     Application startup complete.
+INFO:     127.0.0.1:65022 - "POST /api/chat HTTP/1.1" 200 OK
+WARNING:  StatReload detected changes in 'app/core/intent_router.py'. Reloading...
+INFO:     Shutting down
+INFO:     Waiting for application shutdown.
+INFO:     Application shutdown complete.
+INFO:     Finished server process [99652]
+INFO:     Started server process [65143]
+INFO:     Waiting for application startup.
+INFO:     Application startup complete.
+INFO:     Shutting down
+INFO:     Waiting for application shutdown.
+INFO:     Application shutdown complete.
+INFO:     Finished server process [65143]
+INFO:     Stopping reloader process [99558]

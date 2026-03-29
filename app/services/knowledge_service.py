@@ -104,7 +104,7 @@ class KnowledgeService:
 
             records = list(self.collection.find({"embedding": {"$exists": True}}))
             if not records:
-                return ""
+                return self._search_local(query, top_k=top_k)
 
             similarities = []
             for record in records:
@@ -129,7 +129,7 @@ class KnowledgeService:
                     title = match.get('title', 'Knowledge Chunk')
                     text = match.get('sourceText', '')
                     if text:
-                        context_parts.append(f"--- {title} ---\n{text}")
+                        context_parts.append(self._format_context_entry(title, text))
 
             result = "\n\n".join(context_parts)
             return result or self._search_local(query, top_k=top_k)
@@ -223,9 +223,19 @@ class KnowledgeService:
 
         context_parts = []
         for _, document in scored[:top_k]:
-            context_parts.append(f"--- {document['title']} ---\n{document['sourceText']}")
+            context_parts.append(self._format_context_entry(document['title'], document['sourceText']))
 
         return "\n\n".join(context_parts)
+
+    def _format_context_entry(self, title: str, text: str, max_chars: int = 900) -> str:
+        normalized = re.sub(r"\s+", " ", text).strip()
+        truncated = normalized[:max_chars].rstrip()
+        if len(normalized) > max_chars:
+            last_break = max(truncated.rfind(". "), truncated.rfind("; "), truncated.rfind(", "))
+            if last_break > 120:
+                truncated = truncated[: last_break + 1].rstrip()
+            truncated = f"{truncated} ..."
+        return f"--- {title} ---\n{truncated}"
 
     def _tokenize(self, text: str) -> set[str]:
         return {

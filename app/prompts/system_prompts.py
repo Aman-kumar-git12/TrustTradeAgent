@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import re
 from typing import Iterable
 
 
@@ -19,6 +20,21 @@ ROLE_STARTER_PROMPTS = {
         "How can you help on TrustTrade?",
         "What should I review before checkout?",
     ],
+}
+
+TOPIC_GUIDANCE = {
+    "seller dashboard": (
+        "Treat seller dashboard questions as action-first workflow questions. Focus on leads, listing quality, "
+        "and the next operational move that improves response quality or conversion."
+    ),
+    "buyer review": (
+        "Treat buyer review questions as evaluation questions. Focus on comparison, trust checks, commercial "
+        "clarity, and what the buyer should verify before moving closer to checkout."
+    ),
+    "support": (
+        "Treat support questions as troubleshooting questions. Be explicit about what the platform context does "
+        "support, name any missing information, and guide the user to the most relevant TrustTrade flow."
+    ),
 }
 
 INTENT_GUIDANCE = {
@@ -156,15 +172,20 @@ def detect_response_format(message: str) -> str:
     lowered = message.lower()
 
     for style, keywords in FORMAT_KEYWORDS.items():
-        if any(keyword in lowered for keyword in keywords):
-            return style
+        for keyword in keywords:
+            escaped = re.escape(keyword).replace(r"\ ", r"\s+")
+            if re.search(rf"\b{escaped}\b", lowered):
+                return style
 
     return "default"
 
 
 def format_instruction_for(style: str) -> str:
     instructions = {
-        "json": "Return the answer as valid JSON inside the reply string.",
+        "json": (
+            "Return the outer response as the required JSON object with keys reply and quick_replies. "
+            "Set reply to a valid JSON string containing the answer content only, with no markdown fences."
+        ),
         "table": "Return the answer as a markdown table.",
         "steps": "Return the answer as clear numbered steps.",
         "bullets": "Return the answer as concise bullet points.",
@@ -193,6 +214,7 @@ def topic_guidance_for(active_topics: Iterable[str]) -> str:
 
     guidance = []
     for topic in topics[:3]:
-        guidance.append(f"{topic}: {INTENT_GUIDANCE.get(topic, DEFAULT_HELP_TEXT)}")
+        topic_text = TOPIC_GUIDANCE.get(topic) or INTENT_GUIDANCE.get(topic) or DEFAULT_HELP_TEXT
+        guidance.append(f"{topic}: {topic_text}")
 
     return " | ".join(guidance)

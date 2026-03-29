@@ -103,5 +103,35 @@ async def chat(
         raise HTTPException(status_code=500, detail=str(e))
 
 
+@app.get("/api/sessions")
+async def list_sessions(
+    userId: str, 
+    chat_service: ChatService = Depends(get_chat_service)
+):
+    return chat_service.history_service.list_user_sessions(userId)
+
+
+@app.get("/api/sessions/{session_id}")
+async def get_session(
+    session_id: str, 
+    chat_service: ChatService = Depends(get_chat_service)
+):
+    history = chat_service.history_service.get_session_history(session_id)
+    if not history:
+        raise HTTPException(status_code=404, detail="Session not found")
+    return {"history": history}
+
+
+@app.delete("/api/sessions/{session_id}")
+async def delete_session(
+    session_id: str, 
+    chat_service: ChatService = Depends(get_chat_service)
+):
+    success = chat_service.history_service.delete_session(session_id)
+    if not success:
+        raise HTTPException(status_code=404, detail="Session not found or already deleted")
+    return {"message": "Session deleted"}
+
+
 if __name__ == "__main__":
     uvicorn.run("main:app", host="0.0.0.0", port=8000, reload=True)
