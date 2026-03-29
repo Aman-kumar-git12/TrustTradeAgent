@@ -1,0 +1,74 @@
+Home
+
+Purpose of the Home page
+The authenticated Home page is the main signed-in discovery surface after login. It works as a curated overview page that highlights marketplace activity, featured promotions, discovery opportunities, and direct next actions for logged-in users.
+
+Who uses it
+- buyers
+- sellers
+- admins who may still reach authenticated flows
+
+Main route
+- /home
+
+How it is working
+The page loads dynamic data from backend APIs when it mounts. It requests:
+- home stats
+- featured event data
+
+Those responses are used to populate the page with:
+- a featured event hero section
+- marketplace-focused highlights
+- trending assets
+- new arrivals
+- role-aware action buttons
+
+Important behaviors
+1. If a logged-in user arrives from the landing flow, the page acts as the first post-login experience.
+2. The page fetches home statistics from the backend so content is not just static marketing.
+3. It also fetches featured event information that can promote a marketplace event, campaign, or highlighted business opportunity.
+4. The user sees CTAs that differ by role. Sellers are guided toward seller actions like posting assets or going to their dashboard. Buyers are guided toward discovery and buying flows.
+
+Main sections
+Hero section
+- large featured visual block
+- event or campaign branding
+- direct CTA to the marketplace
+- dashboard access for authenticated users
+
+Marketplace discovery sections
+- trending assets
+- new arrivals
+- content blocks encouraging users to continue browsing
+
+Role-aware CTA section
+- sellers can be pushed toward posting an asset
+- buyers can be pushed toward buy-side action or dashboard flows
+
+Why this page matters
+This page is important because it reduces friction after login. Instead of dropping the user into a raw dashboard immediately, it gives them context, momentum, and a guided sense of what is active on the platform right now.
+
+Business purpose
+The Home page supports:
+- discovery
+- re-engagement
+- campaign visibility
+- traffic direction toward deeper workflows
+
+How the AI agent should describe it
+The AI agent should explain the Home page as the signed-in overview layer that connects marketing-style presentation with real marketplace activity and fast action paths into the operational parts of TrustTrade.
+
+What the Home page contains conceptually
+- featured event content
+- marketplace highlights
+- recommended or visible inventory sections
+- role-based calls to action
+- shortcuts into dashboard or listing workflows
+
+What the Home page is not
+- it is not the main transactional workspace for sellers
+- it is not the full lead management area
+- it is not the full analytics console
+- it is not the final checkout step
+
+It is the bridge between platform discovery and deeper product use.

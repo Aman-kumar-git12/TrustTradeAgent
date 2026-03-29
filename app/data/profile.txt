@@ -1,0 +1,63 @@
+Profile
+
+Purpose of Profile
+Profile is the account management section where a user reviews and edits their personal identity details, contact information, password, and visual profile representation. It helps maintain trust and clarity across the TrustTrade platform.
+
+Main route
+- /profile
+
+Who uses it
+- buyers
+- sellers
+- admins depending on account access patterns
+
+What Profile contains
+- full name
+- email
+- phone
+- description
+- password update support
+- avatar or profile image
+- visible role badge
+- business-related context for sellers
+
+How it is working
+When the Profile page loads, it fetches:
+- the authenticated user profile
+- related business data
+
+That means the page is not only showing static local information. It is built from backend account data and can reflect live user details.
+
+Editing workflow
+1. User opens Profile.
+2. Page loads profile and related data.
+3. User enters edit mode.
+4. User updates fields like name, email, phone, description, or password.
+5. User confirms update.
+6. Data is sent to the backend profile update endpoint.
+7. The page updates local state and displays success feedback.
+
+Avatar and image workflow
+The page supports profile image updates through image upload.
+
+The flow is:
+1. user selects an image
+2. image is uploaded through the image upload endpoint
+3. returned image url is saved into the profile update request
+4. the new avatar is shown in the UI
+
+Why Profile matters
+TrustTrade is a business transaction platform, so identity quality matters. A good profile increases trust, improves communication readiness, and strengthens the business impression of the user account.
+
+Seller-specific value
+For sellers, profile is especially important because buyers may use seller identity as part of trust evaluation. Even when the transaction is business-linked, the visible account still influences confidence.
+
+What Profile is not
+- it is not the seller listing dashboard
+- it is not the marketplace discovery engine
+- it is not the checkout page
+
+It is the personal and trust-management layer of the product.
+
+How the AI agent should describe it
+The AI agent should explain Profile as the user identity and account management area where account details, contact information, image, and role-related trust signals are maintained.

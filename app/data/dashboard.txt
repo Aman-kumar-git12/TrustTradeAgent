@@ -1,0 +1,108 @@
+Dashboard
+
+Purpose of Dashboard
+Dashboard is the role-based operational control area of TrustTrade. It is not one single page with one meaning. It acts as a routing and workflow hub that sends users into the correct business workspace based on their role.
+
+Main dashboard routing behavior
+The central dashboard route checks the authenticated user role and redirects:
+- admin -> /admin
+- seller -> /dashboard/seller
+- buyer -> /dashboard/buyer/:userId
+- unknown/default -> /home
+
+This means Dashboard is both:
+- a route-level entry point
+- a collection of role-specific working environments
+
+Seller Dashboard
+Purpose
+Seller Dashboard is the command center for a business. It helps the seller manage active operations instead of just viewing information.
+
+Main routes
+- /dashboard/seller
+- /dashboard/seller/select
+- /dashboard/seller/:businessId
+- deeper routes under leads, listings, and analytics
+
+How Seller Dashboard is working
+1. When a seller enters /dashboard/seller, the app tries to find the seller's businesses.
+2. If there is a remembered business in local storage, it may redirect there.
+3. If businesses exist, the user is redirected into the selected business dashboard.
+4. If no business exists, the user is redirected to the business selection or creation flow.
+
+What Seller Dashboard contains
+- active business switcher
+- incoming leads area
+- listings management area
+- analytics entry
+- overview stats for the business
+- actions like filtering and switching views
+
+Seller Dashboard tabs
+Incoming Leads
+- manages inbound buyer interest
+- helps seller review negotiation opportunities
+
+My Listings
+- shows assets under the active business
+- helps seller review and manage what is live
+
+Analytics
+- opens overview, product, and customer analytics
+- supports optimization and performance review
+
+Why Seller Dashboard matters
+This is the seller's real working surface. It turns listings into pipeline, pipeline into decisions, and decisions into revenue outcomes.
+
+Buyer Dashboard
+Purpose
+Buyer Dashboard is the buyer-side deal tracking workspace.
+
+Main route
+- /dashboard/buyer/:userId
+
+What it contains
+- interest cards
+- request status
+- seller contact details after acceptance in relevant flows
+- quantity and message review
+- deal summary information
+- payment actions for accepted deals
+
+How Buyer Dashboard is working
+1. Buyer sends or maintains interest in listings.
+2. Dashboard shows the current status of those interests.
+3. If the seller accepts or the process advances, the buyer sees next steps.
+4. Buyer can move toward payment for accepted deals.
+
+Why Buyer Dashboard matters
+It converts marketplace interest into a structured buyer workflow and helps prevent deal confusion after the initial listing view.
+
+Buyer Insights
+There is also a buyer insights route that acts as an analytical extension of the buyer dashboard rather than the daily operational surface.
+
+Admin Dashboard
+Purpose
+The admin dashboard is the back-office control layer.
+
+Main routes
+- /admin
+- /admin/orders
+- /admin/users
+- /admin/support
+- /admin/businesses
+
+What it contains
+- admin overview
+- order management
+- user management
+- support workflow
+- business oversight
+
+How the AI agent should describe Dashboard
+The AI agent should explain Dashboard as a role-sensitive operational system:
+- sellers get a business command center
+- buyers get a deal-tracking workspace
+- admins get a platform management panel
+
+The dashboard area is where users move from passive browsing into active execution.
