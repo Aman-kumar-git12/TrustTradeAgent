@@ -27,6 +27,7 @@ class AgentPurchaseState(TypedDict, total=False):
     intent: Optional[Literal['browse', 'buy', 'compare']]
     category: Optional[str]
     query: Optional[str]
+    searchTerm: Optional[str]
     budgetMax: Optional[float]
     quantity: Optional[int]
     assetIds: Optional[List[str]]

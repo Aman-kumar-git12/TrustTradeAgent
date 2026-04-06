@@ -28,6 +28,7 @@ from .knowledge_service import KnowledgeService
 from .history_service import HistoryService
 from .strategic_session_service import StrategicSessionService
 from .tool_service import ToolService
+from .agent_response_service import generate_agent_reply_text, generate_agent_response
 from ..graph.purchase_graph import create_purchase_graph
 from ..graph.nodes.finalize_order import finalize_order
 from ..schemas.agent_state import AgentPurchaseState
@@ -316,13 +317,33 @@ class ChatService:
                 user_id=user_id,
                 previous_state=previous_state,
             )
+            dynamic_response = self._generate_agentic_reply(
+                objective="Confirm that the buying workflow has been cancelled and invite the user to restart whenever ready.",
+                context={
+                    "sessionId": session_id,
+                    "previous_state": previous_state,
+                    "user_message": request.message,
+                },
+                fallback_reply="The strategic purchase flow is cancelled. Type Start when you want to begin a new buying session.",
+                fallback_quick_replies=["Start", "Browse again"],
+            )
             reply = AgentReply(
-                reply="The strategic purchase flow is cancelled. Type Start when you want to begin a new buying session.",
-                quick_replies=["Start", "Browse again"],
+                reply=dynamic_response["reply"],
+                quick_replies=dynamic_response["quick_replies"],
                 source="langgraph-agent",
                 session_id=session_id,
             )
             return reply
+
+        if self._looks_like_restart(request.message):
+            if previous_state:
+                self._cancel_strategic_session(
+                    public_session_id=session_id,
+                    strategic_session_key=strategic_session_key,
+                    user_id=user_id,
+                    previous_state=previous_state,
+                )
+            previous_state = {}
 
         checkout_reply = self._handle_checkout_confirmation(
             previous_state,
@@ -349,6 +370,30 @@ class ChatService:
         if self._looks_like_reject_options(request.message):
             reply = self._build_rejection_reply(previous_state, session_id, strategic_session_key)
             return reply
+
+        if self._looks_like_change_budget(request.message):
+            return self._build_refinement_prompt_reply(
+                previous_state=previous_state,
+                session_id=session_id,
+                strategic_session_key=strategic_session_key,
+                field="budget",
+            )
+
+        if self._looks_like_change_category(request.message):
+            return self._build_refinement_prompt_reply(
+                previous_state=previous_state,
+                session_id=session_id,
+                strategic_session_key=strategic_session_key,
+                field="category",
+            )
+
+        if self._looks_like_broaden_search(request.message):
+            # Explicitly clear the budget and search results to allow a fresh wide search
+            previous_state["budgetMax"] = None
+            previous_state["assetIds"] = None
+            previous_state.get("metadata", {}).pop("search_results", None)
+            previous_state.get("metadata", {}).pop("awaitingField", None)
+            previous_state["step"] = "showing_options" # Force it back to search phase
 
         try:
             initial_state = self._build_strategic_state(
@@ -389,12 +434,23 @@ class ChatService:
         except Exception as error:
             print(f"⚠️ Strategic agent failure during invoke: {error}", file=sys.stderr)
             traceback.print_exc(file=sys.stderr)
-            return AgentReply(
-                reply=(
+            dynamic_response = self._generate_agentic_reply(
+                objective="Explain that the strategic workflow hit an execution problem before finishing and guide the user toward retry or restart.",
+                context={
+                    "sessionId": session_id,
+                    "userId": user_id,
+                    "previous_state": previous_state,
+                    "error": str(error),
+                },
+                fallback_reply=(
                     "Agent mode hit an execution problem before I could finish the buying flow. "
                     "Please try again, or type Start to open a fresh strategic session."
                 ),
-                quick_replies=["Start", "Try again"],
+                fallback_quick_replies=["Start", "Try again"],
+            )
+            return AgentReply(
+                reply=dynamic_response["reply"],
+                quick_replies=dynamic_response["quick_replies"],
                 source="langgraph-agent",
                 session_id=session_id,
             )
@@ -406,6 +462,42 @@ class ChatService:
 
     def _strategic_session_key(self, session_id: str) -> str:
         return f"agent::{session_id or 'new_agent_session'}"
+
+    def _generate_agentic_reply(
+        self,
+        *,
+        objective: str,
+        context: dict[str, Any],
+        fallback_reply: str,
+        fallback_quick_replies: list[str] | None = None,
+        temperature: float = 0.4,
+        max_tokens: int = 280,
+    ) -> dict[str, Any]:
+        return generate_agent_response(
+            objective=objective,
+            context=context,
+            fallback_reply=fallback_reply,
+            fallback_quick_replies=fallback_quick_replies or [],
+            temperature=temperature,
+            max_tokens=max_tokens,
+        )
+
+    def _generate_agentic_text(
+        self,
+        *,
+        objective: str,
+        context: dict[str, Any],
+        fallback_reply: str,
+        temperature: float = 0.4,
+        max_tokens: int = 260,
+    ) -> str:
+        return generate_agent_reply_text(
+            objective=objective,
+            context=context,
+            fallback_reply=fallback_reply,
+            temperature=temperature,
+            max_tokens=max_tokens,
+        )
 
     def _build_strategic_state(
         self,
@@ -447,12 +539,8 @@ class ChatService:
         ):
             state["step"] = "payment_verified"
 
-        categories = self.tool_service.get_categories() or metadata.get("categories") or [
-            "Electronics",
-            "Machinery",
-            "Furniture",
-        ]
-        if categories and "categories" not in metadata:
+        categories = self._get_agent_categories(metadata)
+        if categories:
             state["metadata"] = {
                 **metadata,
                 "categories": categories,
@@ -504,6 +592,16 @@ class ChatService:
         lowered = message.strip().lower()
         return "payment successful" in lowered or "order recorded" in lowered
 
+    def _looks_like_restart(self, message: str) -> bool:
+        lowered = message.strip().lower()
+        return lowered in {
+            "start",
+            "start over",
+            "restart",
+            "new search",
+            "start new hunt",
+        }
+
     def _looks_like_payment_confirmation(self, message: str) -> bool:
         lowered = message.strip().lower()
         payment_triggers = {
@@ -521,15 +619,96 @@ class ChatService:
         return lowered in payment_triggers or "pay securely" in lowered
 
     def _looks_like_more_options(self, message: str) -> bool:
-        return message.strip().lower() == "show more options"
+        lowered = message.strip().lower()
+        patterns = (
+            r"\bshow(?: me)? more\b",
+            r"\b(?:more|next|another)\s+(?:options?|results?|choices?)\b",
+            r"\b(?:show|see|view|get|give)(?: me)?\s+(?:more|next|another)\s+(?:options?|results?|choices?)\b",
+        )
+        return any(re.search(pattern, lowered) for pattern in patterns)
 
     def _looks_like_reset_options(self, message: str) -> bool:
         lowered = message.strip().lower()
-        return lowered in {"show first options", "back to first options", "start from option 1"}
+        patterns = (
+            r"\bshow(?: me)? (?:the )?first (?:options?|results?|choices?)\b",
+            r"\bback to (?:the )?first (?:options?|results?|choices?)\b",
+            r"\bgo back to (?:the )?first (?:options?|results?|choices?)\b",
+            r"\bstart from option 1\b",
+        )
+        return any(re.search(pattern, lowered) for pattern in patterns)
 
     def _looks_like_reject_options(self, message: str) -> bool:
         lowered = message.strip().lower()
-        return lowered in {"none of these", "none of these options", "something else", "browse again"}
+        patterns = (
+            r"\bnone of these(?: options)?\b",
+            r"\bsomething else\b",
+            r"\bbrowse again\b",
+            r"\b(?:don't|do not) like (?:these|those)\b",
+            r"\bother options\b",
+        )
+        return any(re.search(pattern, lowered) for pattern in patterns)
+
+    def _extract_budget_hint(self, message: str) -> float | None:
+        lowered = message.strip().lower()
+        patterns = (
+            r'\b(?:under|below|max|within|around|about|upto|up to|less than|not more than)\s*(?:\$|usd|rs|inr)?\s*(\d+(?:,\d+)?(?:\.\d+)?\s*[km]?)',
+            r'\bbudget(?:\s+is|\s+to|\s+of)?\s*(?:\$|usd|rs|inr)?\s*(\d+(?:,\d+)?(?:\.\d+)?\s*[km]?)',
+            r'\b(?:raise|increase|lower|decrease|adjust|set|update)\s+(?:my\s+)?budget(?:\s+to)?\s*(?:\$|usd|rs|inr)?\s*(\d+(?:,\d+)?(?:\.\d+)?\s*[km]?)',
+        )
+
+        for pattern in patterns:
+            match = re.search(pattern, lowered)
+            if not match:
+                continue
+
+            raw_value = match.group(1).replace(",", "").strip()
+            multiplier = 1.0
+            if raw_value.endswith("k"):
+                multiplier = 1000.0
+                raw_value = raw_value[:-1].strip()
+            elif raw_value.endswith("m"):
+                multiplier = 1_000_000.0
+                raw_value = raw_value[:-1].strip()
+
+            try:
+                return float(raw_value) * multiplier
+            except ValueError:
+                return None
+
+        return None
+
+    def _looks_like_change_budget(self, message: str) -> bool:
+        lowered = message.strip().lower()
+        if self._extract_budget_hint(lowered) is not None:
+            return False
+
+        patterns = (
+            r"\b(?:change|update|set|adjust|modify)\s+(?:my\s+|the\s+)?budget\b",
+            r"\b(?:lower|raise|increase|decrease)\s+(?:my\s+)?budget\b",
+            r"\bbudget\b.*\b(?:change|update|adjust|modify)\b",
+        )
+        return any(re.search(pattern, lowered) for pattern in patterns)
+
+    def _looks_like_broaden_search(self, message: str) -> bool:
+        lowered = message.strip().lower()
+        broaden_phrases = {
+            "broaden search",
+            "broaden search criteria",
+            "show more categories",
+            "remove filters",
+            "clear filters",
+            "reset search",
+            "show all",
+        }
+        return lowered in broaden_phrases or "broaden" in lowered or "reset" in lowered
+
+    def _looks_like_change_category(self, message: str) -> bool:
+        lowered = message.strip().lower()
+        patterns = (
+            r"\b(?:change|update|set|adjust|modify|switch)\s+(?:the\s+|my\s+)?category\b",
+            r"\bchange\s+(?:the\s+)?type\b",
+        )
+        return any(re.search(pattern, lowered) for pattern in patterns)
 
     def _cancel_strategic_session(
         self,
@@ -546,6 +725,109 @@ class ChatService:
                 userId=user_id,
             )
         self.strategic_session_service.clear_session(strategic_session_key)
+
+    def _get_agent_categories(self, metadata: dict[str, Any]) -> list[str]:
+        try:
+            categories = self.tool_service.get_categories()
+        except Exception:
+            categories = None
+
+        if categories:
+            return categories
+
+        saved_categories = metadata.get("categories") or []
+        return [str(category) for category in saved_categories if category]
+
+    def _build_refinement_prompt_reply(
+        self,
+        previous_state: dict[str, Any],
+        session_id: str,
+        strategic_session_key: str,
+        field: str,
+    ) -> AgentReply:
+        metadata = dict(previous_state.get("metadata", {}) or {})
+        categories = self._get_agent_categories(metadata)
+        if categories:
+            metadata["categories"] = categories
+        else:
+            metadata.pop("categories", None)
+        metadata.pop("search_results", None)
+        metadata.pop("optionOffset", None)
+        metadata.pop("active_quote", None)
+
+        next_state = {
+            **previous_state,
+            "mode": "agent",
+            "step": "collecting_filters",
+            "assetIds": None,
+            "selectedAssetId": None,
+            "reservationId": None,
+            "quoteId": None,
+            "paymentIntentId": None,
+            "orderId": None,
+            "lastError": None,
+            "expiresAt": None,
+            "explanation": None,
+        }
+
+        if field == "budget":
+            metadata["awaitingField"] = "budget"
+            next_state["budgetMax"] = None
+            next_state["metadata"] = metadata
+            self.strategic_session_service.save_session(strategic_session_key, next_state)
+
+            category = previous_state.get("category")
+            target = f" for {category}" if category else ""
+            dynamic_response = self._generate_agentic_reply(
+                objective="Ask the user for a new maximum budget so the shortlist can be rerun.",
+                context={
+                    "field": field,
+                    "previous_state": previous_state,
+                    "category": category,
+                },
+                fallback_reply=f"Share the new max budget{target}, and I will rerun the shortlist.",
+                fallback_quick_replies=["Under 1000", "Under 5000", "Under 10000", "Start"],
+            )
+            return AgentReply(
+                reply=dynamic_response["reply"],
+                quick_replies=dynamic_response["quick_replies"],
+                source="langgraph-agent",
+                session_id=session_id,
+                metadata=metadata,
+            )
+
+        metadata["awaitingField"] = "category"
+        metadata["categoryOffset"] = 0
+        next_state["category"] = None
+        next_state["metadata"] = metadata
+        self.strategic_session_service.save_session(strategic_session_key, next_state)
+
+        quick_replies = categories[:3]
+        if len(categories) > 3:
+            quick_replies.append("Show More Options")
+        quick_replies.append("Start")
+        dynamic_response = self._generate_agentic_reply(
+            objective="Ask the user to choose a new category so the buying flow can continue with better search alignment.",
+            context={
+                "field": field,
+                "previous_state": previous_state,
+                "categories": categories,
+            },
+            fallback_reply=(
+                "Pick a new category from the backend list, and I will keep the buying flow aligned with the rest of your filters."
+                if categories
+                else "Tell me the exact backend category you want, and I will rebuild the search."
+            ),
+            fallback_quick_replies=quick_replies,
+        )
+
+        return AgentReply(
+            reply=dynamic_response["reply"],
+            quick_replies=dynamic_response["quick_replies"],
+            source="langgraph-agent",
+            session_id=session_id,
+            metadata=metadata,
+        )
 
     def _handle_checkout_confirmation(
         self,
@@ -586,23 +868,42 @@ class ChatService:
                 "query": message,
             }
             self.strategic_session_service.save_session(strategic_session_key, pending_state)
-            return AgentReply(
-                reply=(
+            dynamic_response = self._generate_agentic_reply(
+                objective="Tell the user they are now at the payment step and should return after payment so the order can be finalized.",
+                context={
+                    "previous_state": previous_state,
+                    "pending_state": pending_state,
+                    "user_message": message,
+                },
+                fallback_reply=(
                     "You're at the payment step now. Complete the secure checkout in the app, "
                     "then tell me Payment Successful so I can finalize the order."
                 ),
-                quick_replies=["Payment Successful", "Cancel this purchase"],
+                fallback_quick_replies=["Payment Successful", "Cancel this purchase"],
+            )
+            return AgentReply(
+                reply=dynamic_response["reply"],
+                quick_replies=dynamic_response["quick_replies"],
                 source="langgraph-agent",
                 session_id=session_id,
                 metadata=pending_state.get("metadata", previous_state.get("metadata", {})),
             )
 
-        return AgentReply(
-            reply=(
+        dynamic_response = self._generate_agentic_reply(
+            objective="Remind the user that the item is already reserved and they can either proceed to payment or cancel it.",
+            context={
+                "previous_state": previous_state,
+                "user_message": message,
+            },
+            fallback_reply=(
                 "This item is already reserved for you. Use Pay Securely Now to complete the order "
                 "or Cancel this purchase to release the reservation."
             ),
-            quick_replies=["Pay Securely Now", "Cancel this purchase"],
+            fallback_quick_replies=["Pay Securely Now", "Cancel this purchase"],
+        )
+        return AgentReply(
+            reply=dynamic_response["reply"],
+            quick_replies=dynamic_response["quick_replies"],
             source="langgraph-agent",
             session_id=session_id,
             metadata=previous_state.get("metadata", {}),
@@ -626,12 +927,21 @@ class ChatService:
             window = search_results[next_offset:next_offset + 3]
 
             if not window:
-                return AgentReply(
-                    reply=(
+                dynamic_response = self._generate_agentic_reply(
+                    objective="Tell the user they have reached the end of the current shortlist and should refine the search.",
+                    context={
+                        "previous_state": previous_state,
+                        "search_results_count": len(search_results),
+                    },
+                    fallback_reply=(
                         "You've already seen the current shortlist. Share a better budget, category, "
                         "or keyword and I'll reshape the options for you."
                     ),
-                    quick_replies=["Change budget", "Change category", "Start"],
+                    fallback_quick_replies=["Change budget", "Change category", "Start"],
+                )
+                return AgentReply(
+                    reply=dynamic_response["reply"],
+                    quick_replies=dynamic_response["quick_replies"],
                     source="langgraph-agent",
                     session_id=session_id,
                     metadata=metadata,
@@ -664,9 +974,18 @@ class ChatService:
             window = categories[next_offset:next_offset + 3]
 
             if not window:
+                dynamic_response = self._generate_agentic_reply(
+                    objective="Tell the user all available categories have already been shown and ask them to choose one or add more constraints.",
+                    context={
+                        "categories": categories,
+                        "previous_state": previous_state,
+                    },
+                    fallback_reply="Those are all the available categories right now. Pick one of them or tell me your budget and I will narrow the buying flow.",
+                    fallback_quick_replies=categories[:3],
+                )
                 return AgentReply(
-                    reply="Those are all the available categories right now. Pick one of them or tell me your budget and I will narrow the buying flow.",
-                    quick_replies=categories[:3],
+                    reply=dynamic_response["reply"],
+                    quick_replies=dynamic_response["quick_replies"],
                     source="langgraph-agent",
                     session_id=session_id,
                     metadata=metadata,
@@ -687,18 +1006,37 @@ class ChatService:
                 quick_replies.append("Show More Options")
             if next_offset > 0:
                 quick_replies.append("Show First Options")
+            dynamic_response = self._generate_agentic_reply(
+                objective="Present the next set of categories and ask the user to choose one for the buying flow.",
+                context={
+                    "window": window,
+                    "all_categories_count": len(categories),
+                    "offset": next_offset,
+                },
+                fallback_reply="Here are more categories you can choose from for the buying flow:",
+                fallback_quick_replies=quick_replies,
+            )
 
             return AgentReply(
-                reply="Here are more categories you can choose from for the buying flow:",
-                quick_replies=quick_replies,
+                reply=dynamic_response["reply"],
+                quick_replies=dynamic_response["quick_replies"],
                 source="langgraph-agent",
                 session_id=session_id,
                 metadata=metadata,
             )
 
+        dynamic_response = self._generate_agentic_reply(
+            objective="Ask the user for more direction because there are no saved shortlist results or categories to expand.",
+            context={
+                "previous_state": previous_state,
+                "metadata": metadata,
+            },
+            fallback_reply="I need a little more direction before I can expand the options. Tell me the type of asset or your budget and I'll guide the next step.",
+            fallback_quick_replies=["Start", "Set budget", "Choose category"],
+        )
         return AgentReply(
-            reply="I need a little more direction before I can expand the options. Tell me the type of asset or your budget and I’ll guide the next step.",
-            quick_replies=["Start", "Set budget", "Choose category"],
+            reply=dynamic_response["reply"],
+            quick_replies=dynamic_response["quick_replies"],
             source="langgraph-agent",
             session_id=session_id,
             metadata=metadata,
@@ -719,12 +1057,21 @@ class ChatService:
         if has_more_results:
             return self._build_more_options_reply(previous_state, session_id, strategic_session_key)
 
-        return AgentReply(
-            reply=(
+        dynamic_response = self._generate_agentic_reply(
+            objective="Acknowledge that the user rejected the shortlist and invite a more precise refinement path.",
+            context={
+                "previous_state": previous_state,
+                "search_results_count": len(search_results),
+            },
+            fallback_reply=(
                 "No problem. We do not need to force a weak match. "
                 "Change the budget, switch the category, or tell me a sharper keyword and I will rebuild the shortlist."
             ),
-            quick_replies=["Change budget", "Change category", "Start"],
+            fallback_quick_replies=["Change budget", "Change category", "Start"],
+        )
+        return AgentReply(
+            reply=dynamic_response["reply"],
+            quick_replies=dynamic_response["quick_replies"],
             source="langgraph-agent",
             session_id=session_id,
             metadata=metadata,
@@ -739,11 +1086,19 @@ class ChatService:
             price = asset.get("price", "N/A")
             lines.append(
                 f"\nOption {index}: {asset.get('title', 'Untitled Asset')}\n"
-                f"Price: ${price} | Rating: {rating} | Reviews: {reviews}"
+                f"Price: ₹{price} | Rating: {rating} | Reviews: {reviews}"
             )
 
         lines.append("\nPick the option number you want, or tell me what to refine.")
-        return "".join(lines)
+        fallback_reply = "".join(lines)
+        return self._generate_agentic_text(
+            objective="Present the next window of shortlisted assets and ask the user to choose an option or refine the search.",
+            context={
+                "assets": assets,
+                "start_index": start_index,
+            },
+            fallback_reply=fallback_reply,
+        )
 
     def _build_option_quick_replies(
         self,

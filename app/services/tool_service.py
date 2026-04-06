@@ -8,8 +8,10 @@ class ToolService:
     def __init__(self):
         self.backend_url = settings.backend_api_url or "http://localhost:5001"
         self.auth_token = None # Reserved for future user-token forwarding.
+        self.last_error = None
 
     def _call_backend(self, method, endpoint, payload=None, params=None):
+        self.last_error = None
         url = f"{self.backend_url}{endpoint}"
         headers = {
             "Content-Type": "application/json",
@@ -28,14 +30,35 @@ class ToolService:
                 timeout=settings.backend_request_timeout_seconds,
             )
         except requests.RequestException as error:
+            self.last_error = {
+                "type": "request_exception",
+                "endpoint": endpoint,
+                "message": str(error),
+            }
             print(f"Backend API Error: {error}")
             return None
 
         if not response.ok:
+            self.last_error = {
+                "type": "http_error",
+                "endpoint": endpoint,
+                "status": response.status_code,
+                "message": response.text.strip() or f"Backend API returned {response.status_code}",
+            }
             print(f"Backend API Error: {response.status_code} - {response.text}")
             return None
 
-        return response.json()
+        try:
+            return response.json()
+        except ValueError as error:
+            self.last_error = {
+                "type": "invalid_json",
+                "endpoint": endpoint,
+                "status": response.status_code,
+                "message": str(error),
+            }
+            print(f"Backend API Error: Invalid JSON from {endpoint}: {error}")
+            return None
 
     def search_assets(self, query=None, category=None, budgetMax=None, limit=5):
         return self._call_backend("POST", "/api/agent/search-assets", payload={

@@ -86,7 +86,7 @@ class KnowledgeService:
 
     def is_healthy(self) -> bool:
         if not self.semantic_search_enabled:
-            return False
+            return bool(self.seed_documents)
 
         ready = self._ready.wait(timeout=0.1)
         return ready and self.model is not None and self.collection is not None
@@ -95,9 +95,10 @@ class KnowledgeService:
         if not self.semantic_search_enabled:
             return {
                 "semantic_search_enabled": False,
-                "ready": False,
-                "index_ready": False,
-                "error": "Semantic search is disabled.",
+                "ready": bool(self.seed_documents),
+                "index_ready": bool(self.seed_documents),
+                "indexed_records": len(self.seed_documents),
+                "error": "",
             }
 
         timeout = wait_seconds if wait_seconds is not None else settings.warmup_wait_seconds
@@ -140,8 +141,11 @@ class KnowledgeService:
         Returns only vector-retrieved TrustTrade knowledge.
         If the vector system is unavailable, return no context.
         """
-        if not query or not self.semantic_search_enabled:
+        if not query:
             return ""
+
+        if not self.semantic_search_enabled:
+            return self._search_local_documents(query, top_k=top_k)
 
         if not self._ready.wait(timeout=settings.knowledge_init_wait_seconds):
             return ""
@@ -201,6 +205,49 @@ class KnowledgeService:
         except Exception as error:
             print(f"Knowledge Search Error: {error}", file=sys.stderr)
             return ""
+
+    def _search_local_documents(self, query: str, top_k: int = 3) -> str:
+        query_tokens = self._tokenize(query)
+        if not query_tokens:
+            return ""
+
+        candidates: list[tuple[float, dict]] = []
+        for document in self.seed_documents:
+            title = document.get("title", "")
+            text = document.get("sourceText", "")
+            if not text:
+                continue
+
+            text_tokens = set(document.get("tokens") or self._tokenize(text))
+            title_tokens = self._tokenize(title)
+            overlap = len(query_tokens & text_tokens)
+            title_overlap = len(query_tokens & title_tokens)
+            if overlap == 0 and title_overlap == 0:
+                continue
+
+            score = float(title_overlap * 2.0 + overlap * 0.75)
+            if score <= 0:
+                continue
+
+            candidates.append((score, document))
+
+        if not candidates:
+            return ""
+
+        candidates.sort(key=lambda item: item[0], reverse=True)
+        context_parts = []
+        for _, match in candidates[: max(top_k * 3, 6)]:
+            title = match.get("title", "Knowledge Chunk")
+            text = match.get("sourceText", "")
+            if not text:
+                continue
+            formatted = self._format_context_entry(title, text)
+            if formatted not in context_parts:
+                context_parts.append(formatted)
+            if len(context_parts) >= top_k:
+                break
+
+        return "\n\n".join(context_parts)
 
     def _seed_if_needed(self) -> None:
         if self.model is None or self.collection is None:

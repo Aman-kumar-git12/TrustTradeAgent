@@ -52,7 +52,10 @@ def create_purchase_graph():
     )
 
     def routing_after_search(state: AgentPurchaseState):
-        if state.get("step") == "collecting_filters" or not state.get("assetIds"):
+        # If backend search yielded no assets, or search failed, stop the graph here.
+        # The node reply should be returned to the user so they can refine filters
+        # instead of moving into ranking/presentation.
+        if state.get("step") in {"collecting_filters", "failed"} or not state.get("assetIds"):
             return "exit"
         return "continue"
 

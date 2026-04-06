@@ -1,5 +1,6 @@
 from typing import Dict, Any
 from ...schemas.agent_state import AgentPurchaseState
+from ...services.agent_response_service import generate_agent_reply_text
 
 def present_options(state: AgentPurchaseState) -> Dict[str, Any]:
     """
@@ -12,15 +13,27 @@ def present_options(state: AgentPurchaseState) -> Dict[str, Any]:
     start_index = int(metadata.get('optionOffset', 0) or 0)
     visible_results = results[start_index:start_index + 3]
     
-    # 1. Formatting for the reply
-    reply = f"{explanation}\n\n"
+    fallback_lines = [explanation] if explanation else ["I found a shortlist based on your latest buying intent."]
     for idx, asset in enumerate(visible_results, start=start_index + 1):
         rating = asset.get('rating', 'N/A')
         reviews = asset.get('reviewCount', 0)
-        reply += (
+        fallback_lines.append(
             f"**Option {idx}:** {asset.get('title')}\n"
-            f"💰 Price: **${asset.get('price')}** | ⭐ Rating: **{rating}** ({reviews} reviews)\n\n"
+            f"Price: **₹{asset.get('price')}** | Rating: **{rating}** ({reviews} reviews)"
         )
+    fallback_lines.append("Pick the option you want, or tell me what to refine next.")
+    fallback_reply = "\n\n".join(fallback_lines)
+
+    reply = generate_agent_reply_text(
+        objective="Present the shortlisted assets as a strategic buying recommendation and invite the user to choose one option.",
+        context={
+            "explanation": explanation,
+            "start_index": start_index,
+            "visible_results": visible_results,
+            "current_step": state.get("step"),
+        },
+        fallback_reply=fallback_reply,
+    )
     
     # 2. Add quick replies for selection
     quick_replies = [f"Select Option {i}" for i in range(start_index + 1, start_index + len(visible_results) + 1)]
