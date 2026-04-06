@@ -3,12 +3,14 @@ import sys
 import glob
 from typing import List, Dict
 from datetime import datetime, timezone
-from pymongo import MongoClient
-from sentence_transformers import SentenceTransformer
-from app.config.settings import settings
 
 # Add parent directory to path to handle imports
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
+from pymongo import MongoClient
+from sentence_transformers import SentenceTransformer
+from app.config.settings import settings
+from app.data.project_index import load_project_records
 
 MONGODB_URI = settings.mongodb_uri
 DATABASE_NAME = settings.database_name
@@ -84,8 +86,28 @@ def vectorize():
             
             collection.insert_one(record)
             total_chunks += 1
+
+    project_records = load_project_records()
+    for record in project_records:
+        chunk = record["sourceText"]
+        embedding = model.encode(chunk).tolist()
+        collection.insert_one(
+            {
+                "id": record["id"],
+                "title": record["title"],
+                "summary": chunk[:200] + ("..." if len(chunk) > 200 else ""),
+                "sourceText": chunk,
+                "embedding": embedding,
+                "createdAt": datetime.now(timezone.utc),
+                "updatedAt": datetime.now(timezone.utc),
+            }
+        )
+        total_chunks += 1
             
-    print(f"✅ Successfully vectorized {len(txt_files)} files into {total_chunks} semantic chunks in MongoDB.")
+    print(
+        f"✅ Successfully vectorized {len(txt_files)} curated knowledge files and "
+        f"{len(project_records)} project chunks into {total_chunks} semantic chunks in MongoDB."
+    )
     client.close()
 
 if __name__ == "__main__":

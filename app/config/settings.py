@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import os
-import sys
 # 🔥 Fix for OpenMP / SHM2 failure on Mac/Conda environments
 os.environ['KMP_DUPLICATE_LIB_OK'] = 'TRUE'
 os.environ['OMP_NUM_THREADS'] = '1'
@@ -30,15 +29,15 @@ class Settings:
     default_role: str = 'member'
     max_history: int = 8
     knowledge_init_wait_seconds: float = 0.35
-    enable_semantic_search: bool = sys.platform != 'darwin'
+    enable_semantic_search: bool = _env_flag('ENABLE_SEMANTIC_SEARCH', True)
     groq_api_key: str = os.getenv('GROQ_API_KEY', '')
     groq_model: str = 'llama-3.3-70b-versatile'
     
     # MongoDB Configuration
     mongodb_uri: str = os.getenv('MONGODB_URL', os.getenv('MONGODB_URI', 'mongodb://localhost:27017/trusttrade'))
-    database_name: str = 'assetdirect'
-    knowledge_collection_name: str = 'knowledges'
-    conversation_collection_name: str = 'conversations'
+    database_name: str = os.getenv('DATABASE_NAME', 'assetdirect')
+    knowledge_collection_name: str = os.getenv('KNOWLEDGE_COLLECTION_NAME', 'knowledges')
+    conversation_collection_name: str = os.getenv('CONVERSATION_COLLECTION_NAME', 'conversations')
 
 
 settings = Settings()

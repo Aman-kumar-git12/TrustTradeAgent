@@ -2,7 +2,9 @@ import sys
 import threading
 import re
 from pathlib import Path
+
 from ..config.settings import settings
+from ..data.project_index import load_project_records
 
 STOPWORDS = {
     "a", "an", "and", "are", "as", "at", "be", "by", "can", "do", "for", "from",
@@ -30,8 +32,10 @@ class KnowledgeService:
         self.collection = None
         self.last_error = ''
         self.semantic_search_enabled = settings.enable_semantic_search
-        self.local_documents = self._load_local_documents()
-        self.local_chunks = self._build_local_chunks(self.local_documents)
+        curated_documents = self._load_local_documents()
+        project_chunks = self._load_project_chunks()
+        self.local_documents = curated_documents + project_chunks
+        self.local_chunks = self._build_local_chunks(curated_documents) + project_chunks
         self._ready = threading.Event()  # set once init completes
 
         if self.semantic_search_enabled:
@@ -157,6 +161,24 @@ class KnowledgeService:
                 'sourceText': text,
                 'tokens': self._tokenize(text)
             })
+
+        return documents
+
+    def _load_project_chunks(self) -> list[dict]:
+        documents = []
+
+        for record in load_project_records():
+            source_text = record.get("sourceText", "").strip()
+            if not source_text:
+                continue
+
+            documents.append(
+                {
+                    "title": record.get("title", "Project File"),
+                    "sourceText": source_text,
+                    "tokens": self._tokenize(source_text),
+                }
+            )
 
         return documents
 

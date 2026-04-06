@@ -21,7 +21,7 @@ from ..prompts.system_prompts import (
     quick_replies_for,
     topic_guidance_for
 )
-from ..schemas.chat import AgentContext, AgentReply, ChatRequest, ChatMessage
+from ..schemas.chat import AgentContext, AgentReply, ChatRequest, ChatMessage, ToolCall
 from .knowledge_service import KnowledgeService
 from .history_service import HistoryService
 
@@ -133,7 +133,8 @@ class ChatService:
                     reply=reply_text,
                     quick_replies=quick_replies,
                     source="python-agent",
-                    session_id=session_id
+                    session_id=session_id,
+                    tool_calls=self._inject_mock_tool_calls(intent, request_model.message)
                 )
             except Exception as e:
                 # 3. Fallback if LLM fails
@@ -149,7 +150,8 @@ class ChatService:
                     reply=fallback_text,
                     quick_replies=quick_replies_for(intent, request_model.user.role),
                     source="fallback-grounding",
-                    session_id=session_id
+                    session_id=session_id,
+                    tool_calls=self._inject_mock_tool_calls(intent, request_model.message)
                 )
 
         self.history_service.save_message(session_id, "assistant", reply.reply)
@@ -269,3 +271,25 @@ class ChatService:
                 topics.append(label)
 
         return topics[:4]
+
+    def _inject_mock_tool_calls(self, intent: str, message: str) -> List[ToolCall] | None:
+        lowered = message.lower()
+        if "buy" in lowered or "checkout" in lowered or "purchase" in lowered:
+            return [ToolCall(
+                id="tc_checkout_01",
+                type="function",
+                function={"name": "place_negotiated_offer", "arguments": {"action": "purchase", "amount": 1000}}
+            )]
+        elif intent == "marketplace" and any(w in lowered for w in ["search", "find", "show me"]):
+            return [ToolCall(
+                id="tc_search_01",
+                type="function",
+                function={"name": "search_marketplace", "arguments": {"query": message}}
+            )]
+        elif intent == "listing" and any(w in lowered for w in ["post", "create", "draft"]):
+            return [ToolCall(
+                id="tc_draft_01",
+                type="function",
+                function={"name": "draft_listing", "arguments": {"category": "Auto-detected"}}
+            )]
+        return None

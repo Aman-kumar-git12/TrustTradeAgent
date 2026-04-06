@@ -15,7 +15,7 @@ if str(ROOT_DIR) not in sys.path:
 OUTPUT_PATH = ROOT_DIR / 'app' / 'data' / 'website_embeddings.json'
 VECTOR_SIZE = 192
 
-from app.data.section_loader import load_website_sections
+from app.data.project_index import load_project_records
 
 
 def tokenize(text: str) -> List[str]:
@@ -40,21 +40,20 @@ def text_to_vector(text: str, vector_size: int = VECTOR_SIZE) -> List[float]:
     return [round(value / norm, 6) for value in vector]
 
 
-def build_embedding_text(section: dict) -> str:
-    parts: List[str] = [
-        section.get('title', ''),
-        section.get('summary', ''),
-        ' '.join(section.get('details', [])),
-        ' '.join(section.get('features', [])),
-        ' '.join(section.get('keywords', [])),
-        ' '.join(section.get('routes', []))
-    ]
-    return '\n'.join(part for part in parts if part)
+def build_embedding_text(record: dict) -> str:
+    return "\n".join(
+        part
+        for part in (
+            record.get("title", ""),
+            record.get("path", ""),
+            record.get("sourceText", ""),
+        )
+        if part
+    )
 
 
 def main() -> None:
-    source = load_website_sections()
-    sections: Iterable[dict] = source.get('sections', [])
+    sections: Iterable[dict] = load_project_records()
     records = []
 
     for section in sections:
@@ -62,11 +61,7 @@ def main() -> None:
         records.append({
             'id': section.get('id'),
             'title': section.get('title'),
-            'routes': section.get('routes', []),
-            'audience': section.get('audience', []),
-            'summary': section.get('summary', ''),
-            'features': section.get('features', []),
-            'keywords': section.get('keywords', []),
+            'path': section.get('path', ''),
             'source_text': text,
             'embedding': text_to_vector(text)
         })

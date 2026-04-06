@@ -15,11 +15,23 @@ class AgentContext(BaseModel):
     history: List[ChatMessage] = Field(default_factory=list)
 
 
+class ToolCallFunction(BaseModel):
+    name: str
+    arguments: dict
+
+
+class ToolCall(BaseModel):
+    id: str
+    type: str = 'function'
+    function: ToolCallFunction
+
+
 class AgentReply(BaseModel):
     reply: str
     quick_replies: List[str] = Field(default_factory=list, alias='quickReplies')
     source: str = 'python-agent'
     session_id: Optional[str] = Field(None, alias='sessionId')
+    tool_calls: Optional[List[ToolCall]] = Field(None, alias='toolCalls')
 
     class Config:
         populate_by_name = True
