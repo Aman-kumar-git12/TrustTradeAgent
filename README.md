@@ -13,6 +13,92 @@ The agent operates as a **Strategic Partner** service, using a "Single Source of
 
 ---
 
+## 🔄 Conversational Mode Flow
+
+The `/api/chat` endpoint supports both `conversation` mode and `agent` mode. The flow below describes the `conversation` path:
+
+```text
+Client / Frontend
+    |
+    v
+POST /api/chat
+    |
+    v
+FastAPI route in main.py
+    |
+    v
+ChatService.handle(request)
+    |
+    +--> Normalize request into ChatRequest
+    |
+    +--> If mode == "agent"
+    |        |
+    |        +--> Route to LangGraph purchase flow
+    |
+    v
+Conversation mode
+    |
+    +--> Read user role, session id, and recent history
+    |
+    +--> Build retrieval query
+    |        current message + recent history
+    |
+    +--> Detect intent, active topics, and reply format
+    |
+    +--> Greeting check
+    |        |
+    |        +--> Return source="greeting"
+    |
+    +--> Capability question check
+    |        |
+    |        +--> Return source="capability"
+    |
+    v
+KnowledgeService.search(retrieval_query)
+    |
+    +--> Fetch TrustTrade semantic context from vector knowledge
+    |
+    v
+GroundingEngine.extract_grounded_items(...)
+    |
+    +--> No grounded items found
+    |        |
+    |        +--> Return source="scope-guard"
+    |             LLM is not called
+    |
+    v
+Build conversation system prompt
+    |
+    +--> Add role, intent, topics, TrustTrade context,
+    |    and strict JSON response instructions
+    |
+    v
+TrustTradeAgent.chat(...)
+    |
+    v
+Groq model response
+    |
+    +--> Valid JSON parsed
+    |        |
+    |        +--> Return source="python-agent"
+    |
+    +--> LLM call or JSON parse fails
+             |
+             +--> Return source="fallback-grounding"
+```
+
+### Response Sources
+
+These `source` values help explain how a conversational reply was produced:
+
+- `greeting`: Fast-path greeting response.
+- `capability`: Fast-path capability/help response.
+- `scope-guard`: The request looked out of scope or lacked grounded TrustTrade context.
+- `python-agent`: Normal conversational LLM response.
+- `fallback-grounding`: The model failed, so a grounded fallback response was returned.
+
+---
+
 ## 🛠️ Setup & Operations
 
 ### 1. Requirements

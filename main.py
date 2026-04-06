@@ -2,9 +2,10 @@ from __future__ import annotations
 
 import uvicorn
 from contextlib import asynccontextmanager
-from fastapi import FastAPI, HTTPException, Request, Depends
+from fastapi import FastAPI, HTTPException, Request, Depends, Header
 from fastapi.middleware.cors import CORSMiddleware
 
+from app.config.settings import settings
 from app.services.chat_service import ChatService
 from app.schemas.chat import ChatRequest, AgentReply
 
@@ -91,6 +92,43 @@ async def health_check(request: Request):
     }
 
 
+@app.get("/health/warm")
+async def warm_health_check(
+    request: Request,
+    llm_ping: bool = False,
+    wait_seconds: float | None = None,
+    x_warmup_key: str | None = Header(default=None),
+):
+    """
+    Internal keep-warm endpoint for cron jobs or uptime monitors.
+    It initializes the chat service, warms the knowledge engine,
+    primes the purchase graph, and can optionally ping the LLM.
+    """
+    if settings.warmup_api_key and x_warmup_key != settings.warmup_api_key:
+        raise HTTPException(status_code=401, detail="Invalid warmup key.")
+
+    try:
+        chat_service = get_chat_service(request)
+        warmup_report = chat_service.warmup(
+            include_llm_ping=llm_ping,
+            wait_seconds=wait_seconds,
+        )
+    except HTTPException as exc:
+        return {
+            "status": "degraded",
+            "service": "trusttrade-agent",
+            "warmed": False,
+            "error": exc.detail,
+        }
+
+    return {
+        "status": "healthy" if warmup_report.get("warmed") else "degraded",
+        "service": "trusttrade-agent",
+        "warmed": warmup_report.get("warmed", False),
+        "details": warmup_report,
+    }
+
+
 @app.post("/api/chat", response_model=AgentReply, response_model_by_alias=True)
 async def chat(
     request: ChatRequest, 
@@ -116,10 +154,10 @@ async def get_session(
     session_id: str, 
     chat_service: ChatService = Depends(get_chat_service)
 ):
-    history = chat_service.history_service.get_session_history(session_id)
-    if not history:
+    session = chat_service.history_service.get_session(session_id)
+    if not session:
         raise HTTPException(status_code=404, detail="Session not found")
-    return {"history": history}
+    return session
 
 
 @app.delete("/api/sessions/{session_id}")
@@ -127,7 +165,12 @@ async def delete_session(
     session_id: str, 
     chat_service: ChatService = Depends(get_chat_service)
 ):
+    # 1. Clear strategic/transactional state first
+    chat_service.strategic_session_service.clear_session(session_id)
+    
+    # 2. Mark historical session as deleted
     success = chat_service.history_service.delete_session(session_id)
+    
     if not success:
         raise HTTPException(status_code=404, detail="Session not found or already deleted")
     return {"message": "Session deleted"}

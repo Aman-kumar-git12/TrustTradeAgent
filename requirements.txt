@@ -11,3 +11,7 @@ uvicorn>=0.27.0
 # Semantic Knowledge & Embeddings
 sentence-transformers>=2.2.0
 pymongo>=4.6.0
+
+# LangGraph Orchestration
+langgraph>=0.0.30
+langgraph-checkpoint-mongodb>=0.0.2

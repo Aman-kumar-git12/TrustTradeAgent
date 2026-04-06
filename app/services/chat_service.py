@@ -17,6 +17,7 @@ from ..prompts.system_prompts import (
     INTENT_NEXT_STEPS,
     ROLE_HINTS,
     detect_response_format,
+    follow_up_question_for,
     format_instruction_for,
     quick_replies_for,
     topic_guidance_for
@@ -24,6 +25,10 @@ from ..prompts.system_prompts import (
 from ..schemas.chat import AgentContext, AgentReply, ChatRequest, ChatMessage, ToolCall
 from .knowledge_service import KnowledgeService
 from .history_service import HistoryService
+from .strategic_session_service import StrategicSessionService
+from .tool_service import ToolService
+from ..graph.purchase_graph import create_purchase_graph
+from ..schemas.agent_state import AgentPurchaseState
 
 
 class ChatService:
@@ -31,6 +36,7 @@ class ChatService:
         self.agent = TrustTradeAgent()
         self.knowledge_service = KnowledgeService()
         self.history_service = HistoryService()
+        self.strategic_session_service = StrategicSessionService()
         self.intent_router = IntentRouter()
         self.grounding_engine = GroundingEngine()
         # Warm up the embedding model in the background
@@ -38,6 +44,8 @@ class ChatService:
             target=self._warmup_knowledge_engine, daemon=True
         )
         self._warmup_thread.start()
+        self.purchase_graph = None
+        self.tool_service = ToolService()
 
     def _warmup_knowledge_engine(self) -> None:
         try:
@@ -48,27 +56,147 @@ class ChatService:
             print(f"⚠️ Warmup failed (non-fatal): {e}", file=sys.stderr)
 
     def get_health(self) -> dict:
+        strategic_graph_ready = True
+        try:
+            self._get_purchase_graph()
+        except Exception:
+            strategic_graph_ready = False
+
         return {
             "chat_service_initialized": True,
             "intelligence_configured": self.agent.is_configured(),
-            "knowledge_ready": self.knowledge_service.is_healthy()
+            "knowledge_ready": self.knowledge_service.is_healthy(),
+            "strategic_graph_ready": strategic_graph_ready,
         }
+
+    def warmup(self, include_llm_ping: bool = False, wait_seconds: float | None = None) -> dict:
+        report: dict[str, Any] = {
+            "chat_service_initialized": True,
+            "intelligence_configured": self.agent.is_configured(),
+            "knowledge": self.knowledge_service.warmup(wait_seconds=wait_seconds),
+            "strategic_graph_ready": False,
+            "llm_ping": {
+                "requested": include_llm_ping,
+                "ok": False,
+                "error": "",
+            },
+        }
+
+        try:
+            self._get_purchase_graph()
+            report["strategic_graph_ready"] = True
+        except Exception as error:
+            report["strategic_graph_ready"] = False
+            report["strategic_graph_error"] = str(error)
+
+        if include_llm_ping and report["intelligence_configured"]:
+            try:
+                self.agent.chat(
+                    [
+                        {
+                            "role": "system",
+                            "content": "Return valid JSON with keys reply and quick_replies.",
+                        },
+                        {
+                            "role": "user",
+                            "content": "Reply with warmed and one quick reply.",
+                        },
+                    ],
+                    temperature=0,
+                    max_tokens=48,
+                )
+                report["llm_ping"]["ok"] = True
+            except Exception as error:
+                report["llm_ping"]["error"] = str(error)
+
+        warmed = (
+            report["knowledge"].get("ready") is True
+            and report["strategic_graph_ready"] is True
+            and (
+                not include_llm_ping
+                or report["llm_ping"]["ok"] is True
+            )
+        )
+        report["warmed"] = warmed
+        return report
 
     def handle(self, request: ChatRequest | dict[str, Any]) -> AgentReply:
         request_model = self._coerce_request(request)
         max_history = settings.max_history
+        mode = request_model.mode or 'conversation'
+        
+        # 1. Strategic Agent Routing (Phase 17)
+        if mode == 'agent':
+            return self._handle_strategic_agent(request_model)
 
         user_id = request_model.user.id if request_model.user and request_model.user.id else "anonymous"
-        session_id = self.history_service.get_or_create_session(request_model.session_id, user_id)
-        self.history_service.save_message(session_id, "user", request_model.message)
-
-        db_history = self.history_service.get_session_history(session_id)
-        effective_history = (db_history or request_model.history)[-max_history:]
+        safe_role = (request_model.user.role if request_model.user else None) or settings.default_role
+        session_id = request_model.session_id or "new_session"
+        
+        # We no longer save history in Python; Node.js handles persistence.
+        # We use the history passed in the request for context.
+        effective_history = request_model.history[-max_history:]
         
         retrieval_query = self._build_retrieval_query(request_model, effective_history)
         intent = self.intent_router.detect(retrieval_query)
         active_topics = self._detect_active_topics(retrieval_query)
         format_style = detect_response_format(request_model.message)
+
+        if self.grounding_engine.is_greeting(request_model.message):
+            greeting_reply = self.grounding_engine.build_greeting_reply(safe_role)
+            reply_text = self._finalize_conversation_reply(
+                greeting_reply["reply"],
+                message=request_model.message,
+                intent="general",
+                role=safe_role,
+                format_style="paragraph",
+                active_topics=[],
+            )
+            return AgentReply(
+                reply=reply_text,
+                quick_replies=[],
+                source="greeting",
+                session_id=session_id,
+                metadata={
+                    "relatedQuestion": self._extract_related_question(
+                        reply_text,
+                        format_style="paragraph",
+                        message=request_model.message,
+                        intent="general",
+                        role=safe_role,
+                        active_topics=[],
+                    ),
+                    "style": "conversational",
+                },
+            )
+
+        if self.grounding_engine._looks_like_capability_question(request_model.message):
+            cap_reply = self.grounding_engine.build_capability_reply(safe_role)
+            reply_text = self._finalize_conversation_reply(
+                cap_reply["reply"],
+                message=request_model.message,
+                intent="general",
+                role=safe_role,
+                format_style="paragraph",
+                active_topics=[],
+            )
+            return AgentReply(
+                reply=reply_text,
+                quick_replies=[],
+                source="capability",
+                session_id=session_id,
+                metadata={
+                    "relatedQuestion": self._extract_related_question(
+                        reply_text,
+                        format_style="paragraph",
+                        message=request_model.message,
+                        intent="general",
+                        role=safe_role,
+                        active_topics=[],
+                    ),
+                    "style": "conversational",
+                },
+            )
         
         website_context = self._build_combined_context(request_model, retrieval_query)
         
@@ -87,20 +215,40 @@ class ChatService:
             
             scope_reply = self.grounding_engine.build_scope_limited_reply(
                 message=request_model.message,
-                role=request_model.user.role,
+                role=safe_role,
                 intent=intent,
                 active_topics=active_topics,
                 format_style=format_style,
                 reason=reason
             )
+            reply_text = self._finalize_conversation_reply(
+                scope_reply["reply"],
+                message=request_model.message,
+                intent=intent,
+                role=safe_role,
+                format_style=format_style,
+                active_topics=active_topics,
+            )
             reply = AgentReply(
-                reply=scope_reply["reply"],
-                quick_replies=scope_reply["quick_replies"],
+                reply=reply_text,
+                quick_replies=[],
                 source="scope-guard",
-                session_id=session_id
+                session_id=session_id,
+                metadata={
+                    "relatedQuestion": self._extract_related_question(
+                        reply_text,
+                        format_style=format_style,
+                        message=request_model.message,
+                        intent=intent,
+                        role=safe_role,
+                        active_topics=active_topics,
+                    ),
+                    "style": "conversational",
+                },
             )
         else:
             # 2. LLM Call
+            user_role = safe_role
             try:
                 context = self._build_agent_context(request_model, effective_history)
                 system_prompt = self._build_system_prompt(
@@ -119,43 +267,422 @@ class ChatService:
                 raw_response = self.agent.chat(messages)
                 response_data = self._parse_model_response(raw_response)
                 
-                reply_text = str(response_data.get("reply", "")).strip()
+                reply_text = self._finalize_conversation_reply(
+                    str(response_data.get("reply", "")).strip(),
+                    message=request_model.message,
+                    intent=intent,
+                    role=user_role,
+                    format_style=format_style,
+                    active_topics=active_topics,
+                )
                 if not reply_text:
                     raise ValueError("Model response is missing reply text.")
 
-                quick_replies = self._normalize_quick_replies(
+                self._normalize_quick_replies(
                     response_data.get("quick_replies", response_data.get("quickReplies", [])),
                     intent=intent,
-                    role=context.role
+                    role=user_role,
+                    allow_empty=True,
+                )
+                related_question = self._extract_related_question(
+                    reply_text,
+                    format_style=format_style,
+                    message=request_model.message,
+                    intent=intent,
+                    role=user_role,
+                    active_topics=active_topics,
                 )
 
                 reply = AgentReply(
                     reply=reply_text,
-                    quick_replies=quick_replies,
+                    quick_replies=[],
                     source="python-agent",
                     session_id=session_id,
-                    tool_calls=self._inject_mock_tool_calls(intent, request_model.message)
+                    metadata={
+                        "relatedQuestion": related_question,
+                        "style": "conversational",
+                    },
                 )
             except Exception as e:
                 # 3. Fallback if LLM fails
                 print(f"⚠️ LLM Call Failure: {str(e)}", file=sys.stderr)
-                fallback_text = self.grounding_engine.render_grounded_answer(
+                fallback_text = self._finalize_conversation_reply(
+                    self.grounding_engine.render_grounded_answer(
+                        message=request_model.message,
+                        grounded_items=grounded_items,
+                        intent=intent,
+                        role=user_role,
+                        format_style=format_style
+                    ),
                     message=request_model.message,
-                    grounded_items=grounded_items,
                     intent=intent,
-                    role=request_model.user.role,
-                    format_style=format_style
+                    role=user_role,
+                    format_style=format_style,
+                    active_topics=active_topics,
+                )
+                related_question = self._extract_related_question(
+                    fallback_text,
+                    format_style=format_style,
+                    message=request_model.message,
+                    intent=intent,
+                    role=user_role,
+                    active_topics=active_topics,
                 )
                 reply = AgentReply(
                     reply=fallback_text,
-                    quick_replies=quick_replies_for(intent, request_model.user.role),
+                    quick_replies=[],
                     source="fallback-grounding",
                     session_id=session_id,
-                    tool_calls=self._inject_mock_tool_calls(intent, request_model.message)
+                    metadata={
+                        "relatedQuestion": related_question,
+                        "style": "conversational",
+                    },
                 )
 
-        self.history_service.save_message(session_id, "assistant", reply.reply)
+        # We no longer save history in Python; Node.js handles persistence.
         return reply
+
+    def _handle_strategic_agent(self, request: ChatRequest) -> AgentReply:
+        """
+        Routes the request through the LangGraph State Machine (v5.0).
+        Stateless for chat history; State persists only for purchase flow.
+        """
+        user_id = request.user.id if request.user and request.user.id else "anonymous"
+        session_id = request.session_id or "new_agent_session"
+
+        # Strategic 'Deal' state still persists ( LangGraph state ), but chat history is in request.
+        previous_state = self.strategic_session_service.get_session(session_id)
+        history_payload = [{"role": item.role, "content": item.content} for item in request.history[-settings.max_history:]]
+
+        if self._looks_like_cancel(request.message):
+            self._cancel_strategic_session(session_id, user_id, previous_state)
+            reply = AgentReply(
+                reply="The strategic purchase flow is cancelled. Type Start when you want to begin a new buying session.",
+                quick_replies=["Start", "Browse again"],
+                source="langgraph-agent",
+                session_id=session_id,
+            )
+            return reply
+
+        if self._looks_like_payment_success(request.message):
+            self.strategic_session_service.clear_session(session_id)
+            reply = AgentReply(
+                reply="Payment verified. Your order has been recorded successfully, and this strategic session is now complete.",
+                quick_replies=["View My Orders", "Start New Hunt"],
+                source="langgraph-agent",
+                session_id=session_id,
+            )
+            return reply
+
+        if self._looks_like_more_options(request.message):
+            reply = self._build_more_options_reply(previous_state, session_id)
+            return reply
+
+        if self._looks_like_reset_options(request.message):
+            reply = self._build_more_options_reply(previous_state, session_id, reset=True)
+            return reply
+
+        if self._looks_like_reject_options(request.message):
+            reply = self._build_rejection_reply(previous_state, session_id)
+            return reply
+
+        try:
+            initial_state = self._build_strategic_state(
+                session_id=session_id,
+                user_id=user_id,
+                message=request.message,
+                history=history_payload,
+                previous_state=previous_state,
+            )
+
+            result_state = self._get_purchase_graph().invoke(initial_state)
+            try:
+                self.strategic_session_service.save_session(session_id, result_state)
+            except Exception as error:
+                print(f"⚠️ Strategic session save failed: {error}", file=sys.stderr)
+
+            reply_text = result_state.get('reply', 'Strategic processing ongoing...')
+            quick_replies = result_state.get('quickReplies', [])
+            metadata = result_state.get('metadata', {})
+
+            reply = AgentReply(
+                reply=reply_text,
+                quick_replies=quick_replies,
+                source="langgraph-agent",
+                session_id=session_id,
+                metadata=metadata
+            )
+            return reply
+        except Exception as error:
+            print(f"⚠️ Strategic agent failure: {error}", file=sys.stderr)
+            return AgentReply(
+                reply=(
+                    "Agent mode hit an execution problem before I could finish the buying flow. "
+                    "Please try again, or type Start to open a fresh strategic session."
+                ),
+                quick_replies=["Start", "Try again"],
+                source="langgraph-agent",
+                session_id=session_id,
+            )
+
+    def _get_purchase_graph(self):
+        if self.purchase_graph is None:
+            self.purchase_graph = create_purchase_graph()
+        return self.purchase_graph
+
+    def _build_strategic_state(
+        self,
+        session_id: str,
+        user_id: str,
+        message: str,
+        history: List[dict],
+        previous_state: dict[str, Any],
+    ) -> AgentPurchaseState:
+        metadata = dict(previous_state.get("metadata", {}) or {})
+
+        state: AgentPurchaseState = {
+            "sessionId": session_id,
+            "userId": user_id,
+            "mode": "agent",
+            "query": message,
+            "history": history,
+            "step": previous_state.get("step", "idle"),
+            "confidence": float(previous_state.get("confidence", 0.0) or 0.0),
+            "intent": previous_state.get("intent"),
+            "category": previous_state.get("category"),
+            "budgetMax": previous_state.get("budgetMax"),
+            "quantity": previous_state.get("quantity", 1),
+            "assetIds": previous_state.get("assetIds"),
+            "selectedAssetId": previous_state.get("selectedAssetId"),
+            "reservationId": previous_state.get("reservationId"),
+            "quoteId": previous_state.get("quoteId"),
+            "paymentIntentId": previous_state.get("paymentIntentId"),
+            "orderId": previous_state.get("orderId"),
+            "lastError": previous_state.get("lastError"),
+            "expiresAt": previous_state.get("expiresAt"),
+            "explanation": previous_state.get("explanation"),
+            "metadata": metadata,
+        }
+
+        categories = self.tool_service.get_categories()
+        if categories and "categories" not in metadata:
+            state["metadata"] = {
+                **metadata,
+                "categories": categories,
+            }
+            metadata = state["metadata"]
+
+        selected_asset_id = self._resolve_selected_asset_id(
+            message=message,
+            previous_state=previous_state,
+        )
+        if selected_asset_id:
+            state["selectedAssetId"] = selected_asset_id
+
+        return state
+
+    def _resolve_selected_asset_id(self, message: str, previous_state: dict[str, Any]) -> str | None:
+        metadata = previous_state.get("metadata", {}) or {}
+        results = metadata.get("search_results", []) or []
+        if not results:
+            return None
+
+        lowered = message.strip().lower()
+        option_match = re.search(r'option\s*(\d+)', lowered)
+        if option_match:
+            index = int(option_match.group(1)) - 1
+            if 0 <= index < len(results):
+                return str(results[index].get("_id"))
+
+        selection_match = re.search(r'pick\s*(\d+)|select\s*(\d+)|choose\s*(\d+)', lowered)
+        if selection_match:
+            raw_index = next((item for item in selection_match.groups() if item), None)
+            if raw_index:
+                index = int(raw_index) - 1
+                if 0 <= index < len(results):
+                    return str(results[index].get("_id"))
+
+        for asset in results:
+            title = str(asset.get("title", "")).strip().lower()
+            if title and title in lowered:
+                return str(asset.get("_id"))
+
+        return None
+
+    def _looks_like_cancel(self, message: str) -> bool:
+        lowered = message.strip().lower()
+        return lowered in {"cancel", "cancel purchase", "stop", "abort"} or "cancel this purchase" in lowered
+
+    def _looks_like_payment_success(self, message: str) -> bool:
+        lowered = message.strip().lower()
+        return "payment successful" in lowered or "order recorded" in lowered
+
+    def _looks_like_more_options(self, message: str) -> bool:
+        return message.strip().lower() == "show more options"
+
+    def _looks_like_reset_options(self, message: str) -> bool:
+        lowered = message.strip().lower()
+        return lowered in {"show first options", "back to first options", "start from option 1"}
+
+    def _looks_like_reject_options(self, message: str) -> bool:
+        lowered = message.strip().lower()
+        return lowered in {"none of these", "none of these options", "something else", "browse again"}
+
+    def _cancel_strategic_session(self, session_id: str, user_id: str, previous_state: dict[str, Any]) -> None:
+        reservation_id = previous_state.get("reservationId")
+        if reservation_id:
+            self.tool_service.cancel_purchase(
+                sessionId=session_id,
+                reservationId=reservation_id,
+                userId=user_id,
+            )
+        self.strategic_session_service.clear_session(session_id)
+
+    def _build_more_options_reply(
+        self,
+        previous_state: dict[str, Any],
+        session_id: str,
+        reset: bool = False,
+    ) -> AgentReply:
+        metadata = dict(previous_state.get("metadata", {}) or {})
+        metadata.pop("active_quote", None)
+        search_results = metadata.get("search_results", []) or []
+        categories = metadata.get("categories", []) or []
+
+        if search_results:
+            current_offset = 0 if reset else int(metadata.get("optionOffset", 0) or 0)
+            next_offset = 0 if reset else current_offset + 3
+            window = search_results[next_offset:next_offset + 3]
+
+            if not window:
+                return AgentReply(
+                    reply=(
+                        "You've already seen the current shortlist. Share a better budget, category, "
+                        "or keyword and I'll reshape the options for you."
+                    ),
+                    quick_replies=["Change budget", "Change category", "Start"],
+                    source="langgraph-agent",
+                    session_id=session_id,
+                    metadata=metadata,
+                )
+
+            metadata["optionOffset"] = next_offset
+            self.strategic_session_service.save_session(
+                session_id,
+                {
+                    **previous_state,
+                    "step": "awaiting_selection",
+                    "metadata": metadata,
+                },
+            )
+            return AgentReply(
+                reply=self._format_search_options(window, start_index=next_offset),
+                quick_replies=self._build_option_quick_replies(
+                    window,
+                    start_index=next_offset,
+                    has_more=len(search_results) > next_offset + len(window),
+                ),
+                source="langgraph-agent",
+                session_id=session_id,
+                metadata=metadata,
+            )
+
+        if categories:
+            current_offset = 0 if reset else int(metadata.get("categoryOffset", 0) or 0)
+            next_offset = 0 if reset else current_offset + 3
+            window = categories[next_offset:next_offset + 3]
+
+            if not window:
+                return AgentReply(
+                    reply="Those are all the available categories right now. Pick one of them or tell me your budget and I will narrow the buying flow.",
+                    quick_replies=categories[:3],
+                    source="langgraph-agent",
+                    session_id=session_id,
+                    metadata=metadata,
+                )
+
+            metadata["categoryOffset"] = next_offset
+            self.strategic_session_service.save_session(
+                session_id,
+                {
+                    **previous_state,
+                    "step": "collecting_filters",
+                    "metadata": metadata,
+                },
+            )
+
+            quick_replies = list(window)
+            if len(categories) > next_offset + len(window):
+                quick_replies.append("Show More Options")
+            if next_offset > 0:
+                quick_replies.append("Show First Options")
+
+            return AgentReply(
+                reply="Here are more categories you can choose from for the buying flow:",
+                quick_replies=quick_replies,
+                source="langgraph-agent",
+                session_id=session_id,
+                metadata=metadata,
+            )
+
+        return AgentReply(
+            reply="I need a little more direction before I can expand the options. Tell me the type of asset or your budget and I’ll guide the next step.",
+            quick_replies=["Start", "Set budget", "Choose category"],
+            source="langgraph-agent",
+            session_id=session_id,
+            metadata=metadata,
+        )
+
+    def _build_rejection_reply(self, previous_state: dict[str, Any], session_id: str) -> AgentReply:
+        metadata = dict(previous_state.get("metadata", {}) or {})
+        metadata.pop("active_quote", None)
+        search_results = metadata.get("search_results", []) or []
+        option_offset = int(metadata.get("optionOffset", 0) or 0)
+        has_more_results = len(search_results) > option_offset + 3
+
+        if has_more_results:
+            return self._build_more_options_reply(previous_state, session_id)
+
+        return AgentReply(
+            reply=(
+                "No problem. We do not need to force a weak match. "
+                "Change the budget, switch the category, or tell me a sharper keyword and I will rebuild the shortlist."
+            ),
+            quick_replies=["Change budget", "Change category", "Start"],
+            source="langgraph-agent",
+            session_id=session_id,
+            metadata=metadata,
+        )
+
+    def _format_search_options(self, assets: List[dict[str, Any]], start_index: int = 0) -> str:
+        lines = ["I found more purchase options for you:"]
+
+        for index, asset in enumerate(assets, start=start_index + 1):
+            rating = asset.get("rating", "N/A")
+            reviews = asset.get("reviewCount", 0)
+            price = asset.get("price", "N/A")
+            lines.append(
+                f"\nOption {index}: {asset.get('title', 'Untitled Asset')}\n"
+                f"Price: ${price} | Rating: {rating} | Reviews: {reviews}"
+            )
+
+        lines.append("\nPick the option number you want, or tell me what to refine.")
+        return "".join(lines)
+
+    def _build_option_quick_replies(
+        self,
+        assets: List[dict[str, Any]],
+        start_index: int = 0,
+        has_more: bool = False,
+    ) -> List[str]:
+        replies = [f"Select Option {index}" for index in range(start_index + 1, start_index + len(assets) + 1)]
+        if has_more:
+            replies.append("Show More Options")
+        if start_index > 0:
+            replies.append("Show First Options")
+        replies.append("None of these")
+        return replies
+
 
     def _build_system_prompt(
         self,
@@ -167,7 +694,7 @@ class ChatService:
     ) -> str:
         format_instruction = format_instruction_for(format_style)
         prompt = [
-            "You are the TrustTrade Strategic Partner, an AI assistant for the TrustTrade business asset marketplace.",
+            "You are the TrustTrade Platform Expert, a specialized AI assistant for the TrustTrade business asset marketplace.",
             f"User profile: name={context.full_name or 'Unknown'}, role={context.role}.",
             f"Detected intent: {intent}.",
             f"Topic guidance: {topic_guidance_for(active_topics)}",
@@ -175,18 +702,21 @@ class ChatService:
             f"Role hint: {ROLE_HINTS.get(context.role, ROLE_HINTS['default'])}",
             f"Suggested next step: {INTENT_NEXT_STEPS.get(intent, INTENT_NEXT_STEPS['general'])}",
             "",
-            "Grounding rules:",
-            "1. Use the provided TrustTrade knowledge context as the main source of truth.",
-            "2. Answer the user's actual question, not a generic platform overview.",
-            "3. If the context is partial, say what is supported by the context and avoid inventing missing details.",
-            "4. If the question is outside TrustTrade scope or the context does not support an answer, say that clearly and do not answer from general world knowledge.",
-            "5. If the user requests a format such as bullets, steps, table, JSON, paragraph, short, or detailed, follow that exact format in the reply field.",
-            "6. Keep the answer related to TrustTrade workflows, pages, features, or business usage whenever the question is about the platform.",
+            "CORE OPERATING INSTRUCTIONS (CONVERSATION MODE):",
+            "1. PRIMARY SOURCE: You MUST answer the user's question using the 'TrustTrade knowledge context' provided below.",
+            "2. MATH GROUNDING: Your answers are grounded in vector-embedded semantic search. Prioritize details found in the context chunks.",
+            "3. NO HALLUCINATION: If the context does not contain the answer, say 'I'm sorry, I don't have specific information about that in my current knowledge base.' Do not make up platform features.",
+            "4. SCOPE: Focus exclusively on TrustTrade features, pages, workflows, and business mechanics.",
+            "5. TONE: Sound natural, warm, sharp, and genuinely helpful like a polished chat assistant, not a stiff support bot.",
+            "6. DYNAMIC STYLE: Make the answer feel specific to the user's exact question. Avoid canned phrasing, generic intros, or repetitive support-style wording.",
+            "7. RELATABILITY: For normal conversational questions, you may use light humor and 0 to 2 relevant emojis, but do not become silly, childish, or unprofessional.",
+            "8. FOLLOW-UP: End the answer with one related open-ended question based on the user's latest message. Do not end with multiple-choice options inside the reply.",
+            "9. FORMATTING: Strictly follow the user's requested format (e.g., table, bullets, steps).",
             "",
             "Response contract:",
             "Return valid JSON with exactly two keys: reply and quick_replies.",
             "reply must be a string.",
-            "quick_replies must be an array of 2 to 3 short follow-up suggestions.",
+            "quick_replies should usually be an empty array in conversation mode.",
             "Use the exact key name quick_replies, not quickReplies.",
             "Do not wrap the outer JSON object in markdown fences.",
             f"Requested reply format: {format_style}.",
@@ -194,7 +724,7 @@ class ChatService:
         ]
 
         if website_context:
-            prompt.extend(["", "TrustTrade knowledge context:", website_context])
+            prompt.extend(["", "CRITICAL TRUSTTRADE KNOWLEDGE CONTEXT:", website_context])
 
         return "\n".join(prompt)
 
@@ -221,6 +751,7 @@ class ChatService:
         quick_replies: object,
         intent: str,
         role: str,
+        allow_empty: bool = False,
     ) -> List[str]:
         if isinstance(quick_replies, str):
             items = [quick_replies]
@@ -230,10 +761,138 @@ class ChatService:
             items = []
 
         if not items:
+            if allow_empty:
+                return []
             return quick_replies_for(intent, role)
 
         deduped = list(dict.fromkeys(items))
         return deduped[:3]
+
+    def _finalize_conversation_reply(
+        self,
+        reply_text: str,
+        message: str,
+        intent: str,
+        role: str,
+        format_style: str,
+        active_topics: List[str],
+    ) -> str:
+        content = (reply_text or "").strip()
+        if not content:
+            return ""
+
+        related_question = self._build_dynamic_follow_up_question(
+            message=message,
+            intent=intent,
+            role=role,
+            active_topics=active_topics,
+        )
+
+        if format_style == "json":
+            try:
+                payload = json.loads(content)
+                if isinstance(payload, dict):
+                    payload["related_question"] = payload.get("related_question") or related_question
+                    return json.dumps(payload, indent=2)
+            except json.JSONDecodeError:
+                payload = {
+                    "answer": content,
+                    "related_question": related_question,
+                }
+                return json.dumps(payload, indent=2)
+
+        if self._extract_question_from_text(content):
+            return content
+
+        separator = "\n\n" if "\n" in content or format_style in {"steps", "bullets", "table"} else " "
+        return f"{content.rstrip()} {related_question}".strip() if separator == " " else f"{content.rstrip()}{separator}{related_question}"
+
+    def _extract_related_question(
+        self,
+        reply_text: str,
+        format_style: str,
+        message: str,
+        intent: str,
+        role: str,
+        active_topics: List[str],
+    ) -> str:
+        fallback = self._build_dynamic_follow_up_question(
+            message=message,
+            intent=intent,
+            role=role,
+            active_topics=active_topics,
+        )
+        content = (reply_text or "").strip()
+        if not content:
+            return fallback
+
+        if format_style == "json":
+            try:
+                payload = json.loads(content)
+                if isinstance(payload, dict):
+                    value = str(payload.get("related_question", "")).strip()
+                    return value or fallback
+            except json.JSONDecodeError:
+                return fallback
+
+        extracted = self._extract_question_from_text(content)
+        return extracted or fallback
+
+    def _extract_question_from_text(self, text: str) -> str:
+        lines = [line.strip() for line in text.splitlines() if line.strip()]
+        for line in reversed(lines):
+            candidate = re.sub(r"^[\-\d\.\)\s]+", "", line).strip()
+            if candidate.endswith("?"):
+                return candidate
+        return ""
+
+    def _build_dynamic_follow_up_question(
+        self,
+        message: str,
+        intent: str,
+        role: str,
+        active_topics: List[str],
+    ) -> str:
+        topic = self._follow_up_topic_from_message(message, intent, active_topics)
+        if topic:
+            if any(word in topic for word in ("profile", "account")):
+                return f"Do you want me to walk you through the exact {topic} steps next?"
+            if any(word in topic for word in ("dashboard", "marketplace", "checkout", "listing")):
+                return f"Do you want me to break down the {topic} flow step by step?"
+            return f"Do you want me to help you with the next step for {topic}?"
+
+        return follow_up_question_for(intent, role)
+
+    def _follow_up_topic_from_message(
+        self,
+        message: str,
+        intent: str,
+        active_topics: List[str],
+    ) -> str:
+        lowered = (message or "").lower()
+
+        phrase_patterns = [
+            r"(update (?:my |the )?profile)",
+            r"(buyer dashboard|seller dashboard|admin dashboard|dashboard)",
+            r"(marketplace)",
+            r"(checkout)",
+            r"(profile)",
+            r"(listing|post asset|post assets)",
+            r"(pricing|price)",
+            r"(negotiation|offer|counter-offer|counter offer)",
+        ]
+        for pattern in phrase_patterns:
+            match = re.search(pattern, lowered)
+            if match:
+                return match.group(1)
+
+        if active_topics:
+            return active_topics[0]
+
+        if intent and intent != "general":
+            return intent
+
+        return ""
 
     def _coerce_request(self, request: ChatRequest | dict[str, Any]) -> ChatRequest:
         if isinstance(request, ChatRequest):
@@ -253,7 +912,7 @@ class ChatService:
             semantic_context = self.knowledge_service.search(retrieval_query)
         except Exception as e:
             print(f"⚠️ Knowledge Search Failure: {str(e)}", file=sys.stderr)
-        return f"{semantic_context}\n\n{request.website_context or ''}".strip()
+        return semantic_context.strip()
 
     def _build_agent_context(self, request: ChatRequest, history: List[ChatMessage]) -> AgentContext:
         user = request.user or None

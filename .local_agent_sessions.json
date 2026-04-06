@@ -1,0 +1,242 @@
+{
+  "sessions": {
+    "local-1775457601311-ff818ce61d0ea8": {
+      "sessionId": "local-1775457601311-ff818ce61d0ea8",
+      "userId": "69c39d565c6dada1a4759ca4",
+      "mode": "agent",
+      "step": "collecting_filters",
+      "intent": null,
+      "category": null,
+      "query": "Guide me on negotiation",
+      "budgetMax": null,
+      "quantity": 1,
+      "assetIds": null,
+      "selectedAssetId": null,
+      "reservationId": null,
+      "quoteId": null,
+      "paymentIntentId": null,
+      "orderId": null,
+      "lastError": null,
+      "expiresAt": null,
+      "history": [
+        {
+          "role": "user",
+          "content": "now i want to buy a product"
+        },
+        {
+          "role": "assistant",
+          "content": "I can start the purchase search, but I still need the product category first. Tell me what type of asset you want, and I can narrow the options quickly."
+        },
+        {
+          "role": "user",
+          "content": "now again start"
+        },
+        {
+          "role": "assistant",
+          "content": "I can start the purchase search, but I still need the product category first. Tell me what type of asset you want, and I can narrow the options quickly."
+        },
+        {
+          "role": "user",
+          "content": "Show More Options"
+        },
+        {
+          "role": "user",
+          "content": "Heavy Machinery"
+        },
+        {
+          "role": "user",
+          "content": "Guide me on negotiation"
+        }
+      ],
+      "explanation": null,
+      "confidence": 0.0,
+      "metadata": {
+        "categories": [
+          "Heavy Machinery",
+          "IT Hardware",
+          "Industrial",
+          "Office Equipment",
+          "Vehicles"
+        ]
+      },
+      "reply": "I can start the purchase search, but I still need the product category first. Tell me what type of asset you want, and I can narrow the options quickly.",
+      "quickReplies": [
+        "Heavy Machinery",
+        "IT Hardware",
+        "Industrial",
+        "Show More Options"
+      ],
+      "updatedAt": "2026-04-06T07:15:49.505189"
+    },
+    "bad763450aa442a1aac5cd744a3400c1": {
+      "sessionId": "bad763450aa442a1aac5cd744a3400c1",
+      "userId": "agent-smoke",
+      "mode": "agent",
+      "step": "collecting_filters",
+      "intent": null,
+      "category": null,
+      "query": "I want to buy something under 5000",
+      "budgetMax": 5000.0,
+      "quantity": 1,
+      "assetIds": null,
+      "selectedAssetId": null,
+      "reservationId": null,
+      "quoteId": null,
+      "paymentIntentId": null,
+      "orderId": null,
+      "lastError": null,
+      "expiresAt": null,
+      "history": [
+        {
+          "role": "user",
+          "content": "I want to buy something under 5000"
+        }
+      ],
+      "explanation": null,
+      "confidence": 0.0,
+      "metadata": {},
+      "reply": "I can start the purchase search, but I still need the product category first. Tell me what type of asset you want, and I can narrow the options quickly.",
+      "quickReplies": [
+        "Electronics",
+        "Machinery",
+        "Furniture"
+      ],
+      "updatedAt": "2026-04-06T07:02:06.868605"
+    },
+    "local-1775459835704-32a165a496e23": {
+      "sessionId": "local-1775459835704-32a165a496e23",
+      "userId": "69c39d565c6dada1a4759ca4",
+      "mode": "agent",
+      "step": "collecting_filters",
+      "intent": null,
+      "category": null,
+      "query": "start again",
+      "budgetMax": null,
+      "quantity": 1,
+      "assetIds": null,
+      "selectedAssetId": null,
+      "reservationId": null,
+      "quoteId": null,
+      "paymentIntentId": null,
+      "orderId": null,
+      "lastError": null,
+      "expiresAt": null,
+      "history": [
+        {
+          "role": "user",
+          "content": "start again"
+        }
+      ],
+      "explanation": null,
+      "confidence": 0.0,
+      "metadata": {
+        "categories": [
+          "Heavy Machinery",
+          "IT Hardware",
+          "Industrial",
+          "Office Equipment",
+          "Vehicles"
+        ]
+      },
+      "reply": "I can start the purchase search, but I still need the product category first. Tell me what type of asset you want, and I can narrow the options quickly.",
+      "quickReplies": [
+        "Heavy Machinery",
+        "IT Hardware",
+        "Industrial",
+        "Show More Options"
+      ],
+      "updatedAt": "2026-04-06T07:17:23.329180"
+    },
+    "b2091c13b650463984aaa873d190ff67": {
+      "sessionId": "b2091c13b650463984aaa873d190ff67",
+      "userId": "agent-final",
+      "mode": "agent",
+      "step": "collecting_filters",
+      "intent": null,
+      "category": null,
+      "query": "I want to buy a laptop under 50000",
+      "budgetMax": 50000.0,
+      "quantity": 1,
+      "assetIds": null,
+      "selectedAssetId": null,
+      "reservationId": null,
+      "quoteId": null,
+      "paymentIntentId": null,
+      "orderId": null,
+      "lastError": null,
+      "expiresAt": null,
+      "history": [
+        {
+          "role": "user",
+          "content": "I want to buy a laptop under 50000"
+        }
+      ],
+      "explanation": null,
+      "confidence": 0.0,
+      "metadata": {},
+      "reply": "I can start the purchase search, but I still need the product category first. Tell me what type of asset you want, and I can narrow the options quickly.",
+      "quickReplies": [
+        "Electronics",
+        "Machinery",
+        "Furniture"
+      ],
+      "updatedAt": "2026-04-06T07:23:19.094998"
+    },
+    "local-1775482351860-17cbb6487f7638": {
+      "sessionId": "local-1775482351860-17cbb6487f7638",
+      "userId": "69d36525d1506dd6710893f0",
+      "mode": "agent",
+      "step": "collecting_filters",
+      "intent": null,
+      "category": null,
+      "query": "start",
+      "budgetMax": null,
+      "quantity": 1,
+      "assetIds": null,
+      "selectedAssetId": null,
+      "reservationId": null,
+      "quoteId": null,
+      "paymentIntentId": null,
+      "orderId": null,
+      "lastError": null,
+      "expiresAt": null,
+      "history": [
+        {
+          "role": "user",
+          "content": "hii"
+        },
+        {
+          "role": "assistant",
+          "content": "I can start the purchase search, but I still need the product category first. Tell me what type of asset you want, and I can narrow the options quickly."
+        },
+        {
+          "role": "user",
+          "content": "Heavy Machinery"
+        },
+        {
+          "role": "assistant",
+          "content": "Agent mode hit an execution problem before I could finish the buying flow. Please try again, or type Start to open a fresh strategic session."
+        }
+      ],
+      "explanation": null,
+      "confidence": 0.0,
+      "metadata": {
+        "categories": [
+          "Heavy Machinery",
+          "IT Hardware",
+          "Industrial",
+          "Office Equipment",
+          "Vehicles"
+        ]
+      },
+      "reply": "I can start the purchase search, but I still need the product category first. Tell me what type of asset you want, and I can narrow the options quickly.",
+      "quickReplies": [
+        "Heavy Machinery",
+        "IT Hardware",
+        "Industrial",
+        "Show More Options"
+      ],
+      "updatedAt": "2026-04-06T13:32:56.151943"
+    }
+  }
+}

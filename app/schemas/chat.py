@@ -7,6 +7,8 @@ from pydantic import BaseModel, Field
 class ChatMessage(BaseModel):
     role: str
     content: str
+    metadata: dict = Field(default_factory=dict)
+    quickReplies: List[str] = Field(default_factory=list)
 
 
 class AgentContext(BaseModel):
@@ -32,6 +34,7 @@ class AgentReply(BaseModel):
     source: str = 'python-agent'
     session_id: Optional[str] = Field(None, alias='sessionId')
     tool_calls: Optional[List[ToolCall]] = Field(None, alias='toolCalls')
+    metadata: Optional[dict] = Field(default_factory=dict)
 
     class Config:
         populate_by_name = True
@@ -50,6 +53,7 @@ class UserInfo(BaseModel):
 
 class ChatRequest(BaseModel):
     message: str
+    mode: Optional[str] = 'conversation'
     website_context: Optional[str] = ''
     user: Optional[UserInfo] = Field(default_factory=UserInfo)
     history: List[ChatMessage] = Field(default_factory=list)

@@ -28,10 +28,17 @@ class Settings:
     agent_source: str = 'python-agent'
     default_role: str = 'member'
     max_history: int = 8
-    knowledge_init_wait_seconds: float = 0.35
+    knowledge_init_wait_seconds: float = 8.0
+    warmup_wait_seconds: float = float(os.getenv('WARMUP_WAIT_SECONDS', '20'))
     enable_semantic_search: bool = _env_flag('ENABLE_SEMANTIC_SEARCH', True)
     groq_api_key: str = os.getenv('GROQ_API_KEY', '')
     groq_model: str = 'llama-3.3-70b-versatile'
+    warmup_api_key: str = os.getenv('AGENT_WARMUP_KEY', '')
+    
+    # Backend Integration
+    backend_api_url: str = os.getenv('BACKEND_API_URL', 'http://localhost:5001')
+    agent_internal_key: str = os.getenv('AGENT_INTERNAL_KEY', 'trusttrade-local-agent')
+    backend_request_timeout_seconds: float = float(os.getenv('BACKEND_REQUEST_TIMEOUT_SECONDS', '10'))
     
     # MongoDB Configuration
     mongodb_uri: str = os.getenv('MONGODB_URL', os.getenv('MONGODB_URI', 'mongodb://localhost:27017/trusttrade'))

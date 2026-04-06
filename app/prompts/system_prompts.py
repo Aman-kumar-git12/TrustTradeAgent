@@ -99,6 +99,17 @@ ROLE_HINTS = {
     "default": "Open your dashboard and choose the workflow you want to improve first.",
 }
 
+FOLLOW_UP_QUESTIONS = {
+    "listing": "Do you want me to help you improve a specific listing next?",
+    "negotiation": "Do you want me to help you draft the next negotiation message?",
+    "pricing": "Do you want me to help you shape a pricing explanation for your asset?",
+    "dashboard": "Do you want me to walk you through the dashboard step by step?",
+    "checkout": "Do you want me to help you verify the next checkout step?",
+    "marketplace": "Do you want me to help you compare a few marketplace listings next?",
+    "profile": "Do you want me to walk you through updating your profile details?",
+    "general": "Do you want me to help with the next TrustTrade step related to this?",
+}
+
 INTENT_QUICK_REPLIES = {
     "listing": [
         "Write a stronger asset headline",
@@ -147,6 +158,29 @@ ROLE_SPECIFIC_GENERAL_QUICK_REPLIES = {
     ],
 }
 
+GREETING_QUICK_REPLIES = {
+    "seller": [
+        "Help me improve a listing",
+        "Show me seller dashboard tips",
+        "How should I negotiate with buyers?",
+    ],
+    "buyer": [
+        "Help me compare listings",
+        "Show me marketplace tips",
+        "What should I check before checkout?",
+    ],
+    "admin": [
+        "Show me admin dashboard help",
+        "What can admins manage?",
+        "How do support routes work?",
+    ],
+    "default": [
+        "Show me how TrustTrade works",
+        "What can you help me with?",
+        "Guide me to the right page",
+    ],
+}
+
 TOPIC_KEYWORDS = {
     "pricing": ("price", "pricing", "cost", "quote", "margin"),
     "negotiation": ("negotiate", "counter", "offer", "deal", "discount"),
@@ -184,7 +218,8 @@ def format_instruction_for(style: str) -> str:
     instructions = {
         "json": (
             "Return the outer response as the required JSON object with keys reply and quick_replies. "
-            "Set reply to a valid JSON string containing the answer content only, with no markdown fences."
+            "Set reply to a valid JSON string with exactly two keys: answer and related_question. "
+            "Do not add markdown fences."
         ),
         "table": "Return the answer as a markdown table.",
         "steps": "Return the answer as clear numbered steps.",
@@ -207,6 +242,10 @@ def quick_replies_for(intent: str, role: str) -> list[str]:
     return ROLE_STARTER_PROMPTS["default"][:3]
 
 
+def greeting_quick_replies_for(role: str) -> list[str]:
+    return GREETING_QUICK_REPLIES.get(role, GREETING_QUICK_REPLIES["default"])[:3]
+
+
 def topic_guidance_for(active_topics: Iterable[str]) -> str:
     topics = [topic for topic in active_topics if topic]
     if not topics:
@@ -218,3 +257,7 @@ def topic_guidance_for(active_topics: Iterable[str]) -> str:
         guidance.append(f"{topic}: {topic_text}")
 
     return " | ".join(guidance)
+
+
+def follow_up_question_for(intent: str, role: str) -> str:
+    return FOLLOW_UP_QUESTIONS.get(intent, FOLLOW_UP_QUESTIONS["general"])
