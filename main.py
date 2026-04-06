@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import threading
 import uvicorn
 from contextlib import asynccontextmanager
 from fastapi import FastAPI, HTTPException, Request, Depends, Header
@@ -18,6 +19,18 @@ async def lifespan(app: FastAPI):
     service initialization to allow instant server boot.
     """
     app.state.chat_service = None
+    app.state.chat_service_lock = threading.Lock()
+    app.state.chat_service_init_started = False
+
+    def _bootstrap_chat_service() -> None:
+        try:
+            with app.state.chat_service_lock:
+                if app.state.chat_service is None:
+                    app.state.chat_service = ChatService()
+        finally:
+            app.state.chat_service_init_started = True
+
+    threading.Thread(target=_bootstrap_chat_service, daemon=True).start()
     yield
     
     # Cleanup (e.g., closing Mongo connections if needed)
@@ -47,8 +60,16 @@ def get_chat_service(request: Request) -> ChatService:
     if not service:
         # Lazy initialization fallback if lifespan failed
         try:
-            request.app.state.chat_service = ChatService()
-            return request.app.state.chat_service
+            lock = getattr(request.app.state, 'chat_service_lock', None)
+            if lock is None:
+                request.app.state.chat_service = ChatService()
+                return request.app.state.chat_service
+
+            with lock:
+                service = getattr(request.app.state, 'chat_service', None)
+                if service is None:
+                    request.app.state.chat_service = ChatService()
+                return request.app.state.chat_service
         except Exception as e:
             raise HTTPException(
                 status_code=503, 

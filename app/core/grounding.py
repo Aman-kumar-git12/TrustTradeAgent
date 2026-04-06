@@ -1,13 +1,11 @@
 from __future__ import annotations
 
 import json
-import random
 import re
 from typing import List
 
 from ..prompts.system_prompts import (
     INTENT_NEXT_STEPS,
-    greeting_quick_replies_for,
     quick_replies_for,
 )
 
@@ -45,37 +43,11 @@ GREETING_PATTERNS = (
     r"^\s*good\s+(?:morning|afternoon|evening)\b",
 )
 
-GREETING_VARIANTS = {
-    "seller": [
-        "Hello there. I am awake, caffeinated in spirit, and ready to help you sell smarter on TrustTrade ☕. Bring me a listing, a buyer message, or a dashboard puzzle and we will sharpen it together.",
-        "Hey seller-side strategist. I am ready to help you make your TrustTrade flow cleaner, sharper, and a little less chaotic 😄. Send me a listing issue, a buyer reply, or a dashboard question.",
-        "Hi there. I am on standby for all things selling on TrustTrade, from listings to leads to those tiny details that quietly improve deal confidence. What are we fixing today?",
-    ],
-    "buyer": [
-        "Hey there. I am glad you dropped in. Think of me as your calm deal-sidekick with a tiny sense of humor and a strong love for organized buying decisions on TrustTrade 😄. Show me a listing, a comparison, or a checkout question.",
-        "Hi. TrustTrade assistant mode is fully awake and politely overqualified for buyer questions today ✨. If you want to compare listings, decode checkout steps, or sanity-check a deal, I am in.",
-        "Hello hello. I am here to help you browse smarter, compare faster, and avoid messy buying decisions on TrustTrade. A little strategy, a little clarity, and ideally less confusion 😌.",
-    ],
-    "admin": [
-        "Hello. The TrustTrade control room is open, the dashboards are humming, and I am ready to help you keep things tidy without the dramatic background music. Ask me about users, support, orders, or admin workflows.",
-        "Hi admin hero. I am ready to help you untangle routes, review workflows, and keep the TrustTrade machinery behaving itself 🛠️. What needs attention first?",
-        "Hey. I am on admin-duty support mode today, which means I am prepared for dashboards, support flows, operational cleanup, and the occasional mystery issue. What should we inspect?",
-    ],
-    "default": [
-        "Hi. I am really happy you are here. I am your TrustTrade guide, part business assistant and part overly enthusiastic workflow buddy. Ask me about marketplace, dashboard, listings, negotiation, checkout, or profile flows and I will help.",
-        "Hey there. I am ready to help with TrustTrade questions, workflow confusion, and the classic 'where do I click now?' moment 🙂. Tell me what you want to do and we will sort it out.",
-        "Hello. I can help you figure out TrustTrade without making it feel like you need a user manual and a stress ball at the same time 😄. What would you like to explore?",
-    ],
-}
-
 class GroundingEngine:
     """
     Handles all non-LLM logic including context retrieval, scoring, 
     scope checking, and fallback rendering.
     """
-
-    def __init__(self) -> None:
-        self._last_variant_index: dict[tuple[str, str], int] = {}
 
     def extract_grounded_items(
         self,
@@ -198,47 +170,6 @@ class GroundingEngine:
     def is_greeting(self, message: str) -> bool:
         lowered = message.strip().lower()
         return any(re.search(pattern, lowered) for pattern in GREETING_PATTERNS)
-
-    def build_greeting_reply(self, role: str) -> dict:
-        reply = self._choose_rotating_variant("greeting", role, GREETING_VARIANTS)
-
-        return {
-            "reply": reply,
-            "quick_replies": [],
-            "related_question": "What would you like help with on TrustTrade today? 🙂",
-        }
-
-    def build_capability_reply(self, role: str) -> dict:
-        if role == "seller":
-            reply = (
-                "I can help you navigate the TrustTrade seller experience. I can explain how to post business assets, "
-                "how the Seller Dashboard helps you manage incoming leads, and how to analyze your business performance via Analytics. "
-                "I can also assist with the strategic purchase flow if you are interested in acquiring more assets."
-            )
-        elif role == "buyer":
-            reply = (
-                "As your TrustTrade assistant, I can guide you through discovering business assets in the Marketplace, "
-                "tracking your interests via the Buyer Dashboard, and understanding the checkout and legal transfer process. "
-                "I am also equipped to help you with strategic buying decisions and comparisons."
-            )
-        elif role == "admin":
-            reply = (
-                "I am here to assist with TrustTrade platform administration. I can provide guidance on managing orders, "
-                "reviewing user registrations, handling support tickets, and overseeing business listings across the platform. "
-                "Just ask about a specific admin workflow."
-            )
-        else:
-            reply = (
-                "I can help you explore everything TrustTrade has to offer. Whether you want to browse the Marketplace, "
-                "understand how to post a business asset, or learn about the secure checkout process, I have the answers. "
-                "I can also switch into 'Strategic Agent' mode to help you through a full purchase flow."
-            )
-
-        return {
-            "reply": reply,
-            "quick_replies": [],
-            "related_question": "What part of TrustTrade do you want me to explain first?",
-        }
 
     def build_scope_limited_reply(
         self,
@@ -421,21 +352,3 @@ class GroundingEngine:
         if cleaned[-1] not in ".!?":
             cleaned = f"{cleaned}."
         return cleaned
-
-    def _choose_rotating_variant(
-        self,
-        variant_group: str,
-        role: str,
-        variants_by_role: dict[str, list[str]],
-    ) -> str:
-        normalized_role = role if role in variants_by_role else "default"
-        variants = variants_by_role.get(normalized_role) or variants_by_role["default"]
-        if len(variants) == 1:
-            return variants[0]
-
-        cache_key = (variant_group, normalized_role)
-        last_index = self._last_variant_index.get(cache_key)
-        available_indexes = [index for index in range(len(variants)) if index != last_index]
-        selected_index = random.choice(available_indexes)
-        self._last_variant_index[cache_key] = selected_index
-        return variants[selected_index]

@@ -14,7 +14,12 @@ def reserve_inventory(state: AgentPurchaseState) -> Dict[str, Any]:
     quote_id = state.get('quoteId')
     
     if not asset_id or not quote_id:
-        return {"lastError": "State missing details for reservation."}
+        return {
+            "lastError": "State missing details for reservation.",
+            "reply": "I do not have the full quote details needed to reserve this asset yet. Please retry the selection.",
+            "quickReplies": ["Show First Options", "Start"],
+            "step": "failed",
+        }
     
     # 2. Call the authorized backend reservation tool
     reservation = tools.reserve_inventory(
@@ -28,6 +33,8 @@ def reserve_inventory(state: AgentPurchaseState) -> Dict[str, Any]:
     if not reservation:
         return {
             "lastError": "The inventory has been secured by another user. Let's find alternatives.",
+            "reply": "That inventory became unavailable before I could reserve it. I can help you look at the next best options.",
+            "quickReplies": ["Show First Options", "Browse again", "Start"],
             "step": "failed"
         }
     

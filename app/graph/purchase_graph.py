@@ -32,23 +32,38 @@ def create_purchase_graph():
     workflow.add_edge("detect_mode", "extract_constraints")
     
     def routing_after_constraints(state: AgentPurchaseState):
+        if state.get('step') == 'payment_verified':
+            return "finalize_order"
         if state.get('selectedAssetId'):
             return "create_quote"
         if state.get('step') == 'collecting_filters':
-            return "END"
+            return END
         return "search_assets"
 
     workflow.add_conditional_edges(
         "extract_constraints",
         routing_after_constraints,
         {
+            "finalize_order": "finalize_order",
             "create_quote": "create_quote",
             "search_assets": "search_assets",
-            "END": END
+            END: END
         }
     )
 
-    workflow.add_edge("search_assets", "rank_assets")
+    def routing_after_search(state: AgentPurchaseState):
+        if state.get("step") == "collecting_filters" or not state.get("assetIds"):
+            return END
+        return "rank_assets"
+
+    workflow.add_conditional_edges(
+        "search_assets",
+        routing_after_search,
+        {
+            "rank_assets": "rank_assets",
+            END: END,
+        }
+    )
     workflow.add_edge("rank_assets", "present_options")
     
     # Selection Flow
@@ -62,7 +77,7 @@ def create_purchase_graph():
         routing_after_presentation,
         {
             "create_quote": "create_quote",
-            "END": END
+            END: END
         }
     )
 

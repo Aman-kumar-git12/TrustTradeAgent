@@ -7,6 +7,9 @@ def extract_constraints(state: AgentPurchaseState) -> Dict[str, Any]:
     Parses natural language input to extracted structured filters 
     (budget, category, quantity) for the strategic search.
     """
+    if state.get("step") == "payment_verified":
+        return {"step": "payment_verified"}
+
     query = state.get('query', '').lower()
     
     # Simple regex extraction for now, will be LLM-augmented

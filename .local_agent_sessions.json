@@ -189,7 +189,7 @@
       "step": "collecting_filters",
       "intent": null,
       "category": null,
-      "query": "start",
+      "query": "Start",
       "budgetMax": null,
       "quantity": 1,
       "assetIds": null,
@@ -203,7 +203,7 @@
       "history": [
         {
           "role": "user",
-          "content": "hii"
+          "content": "Start"
         },
         {
           "role": "assistant",
@@ -212,6 +212,22 @@
         {
           "role": "user",
           "content": "Heavy Machinery"
+        },
+        {
+          "role": "assistant",
+          "content": "Agent mode hit an execution problem before I could finish the buying flow. Please try again, or type Start to open a fresh strategic session."
+        },
+        {
+          "role": "user",
+          "content": "Start"
+        },
+        {
+          "role": "assistant",
+          "content": "I can start the purchase search, but I still need the product category first. Tell me what type of asset you want, and I can narrow the options quickly."
+        },
+        {
+          "role": "user",
+          "content": "IT Hardware"
         },
         {
           "role": "assistant",
@@ -236,7 +252,122 @@
         "Industrial",
         "Show More Options"
       ],
-      "updatedAt": "2026-04-06T13:32:56.151943"
+      "updatedAt": "2026-04-06T14:25:16.014064"
+    },
+    "agent::rt-agent-1": {
+      "sessionId": "rt-agent-1",
+      "userId": "u1",
+      "mode": "agent",
+      "step": "collecting_filters",
+      "intent": null,
+      "category": null,
+      "query": "Machinery",
+      "budgetMax": null,
+      "quantity": 1,
+      "assetIds": null,
+      "selectedAssetId": null,
+      "reservationId": null,
+      "quoteId": null,
+      "paymentIntentId": null,
+      "orderId": null,
+      "lastError": null,
+      "expiresAt": null,
+      "history": [],
+      "explanation": null,
+      "confidence": 0.0,
+      "metadata": {},
+      "reply": "I can start the purchase search, but I still need the product category first. Tell me what type of asset you want, and I can narrow the options quickly.",
+      "quickReplies": [
+        "Electronics",
+        "Machinery",
+        "Furniture"
+      ],
+      "updatedAt": "2026-04-06T14:15:16.141833"
+    },
+    "agent::rt-agent-2": {
+      "sessionId": "rt-agent-2",
+      "userId": "u1",
+      "mode": "agent",
+      "step": "collecting_filters",
+      "intent": null,
+      "category": "Machinery",
+      "query": "Machinery",
+      "budgetMax": null,
+      "quantity": 1,
+      "assetIds": [],
+      "selectedAssetId": null,
+      "reservationId": null,
+      "quoteId": null,
+      "paymentIntentId": null,
+      "orderId": null,
+      "lastError": "No assets found matching your criteria.",
+      "expiresAt": null,
+      "history": [],
+      "explanation": null,
+      "confidence": 0.0,
+      "metadata": {
+        "categories": [
+          "Electronics",
+          "Machinery",
+          "Furniture"
+        ]
+      },
+      "reply": "I could not find a strong match for that search yet. Try a different category, a broader keyword, or raise the budget a bit and I will search again.",
+      "quickReplies": [
+        "Change category",
+        "Change budget",
+        "Start"
+      ],
+      "updatedAt": "2026-04-06T14:16:09.331145"
+    },
+    "agent::diag-1": {
+      "sessionId": "diag-1",
+      "userId": "u1",
+      "mode": "agent",
+      "step": "awaiting_selection",
+      "intent": null,
+      "category": "Heavy Machinery",
+      "query": "Heavy Machinery",
+      "budgetMax": null,
+      "quantity": 1,
+      "assetIds": [
+        "a1"
+      ],
+      "selectedAssetId": null,
+      "reservationId": null,
+      "quoteId": null,
+      "paymentIntentId": null,
+      "orderId": null,
+      "lastError": null,
+      "expiresAt": null,
+      "history": [],
+      "explanation": "I've selected the top options for you. The first choice, 'Bulldozer', is highly recommended because it fits your budget exactly and has strong seller ratings.",
+      "confidence": 0.0,
+      "metadata": {
+        "categories": [
+          "Heavy Machinery",
+          "IT Hardware",
+          "Industrial",
+          "Office Equipment",
+          "Vehicles"
+        ],
+        "search_results": [
+          {
+            "_id": "a1",
+            "title": "Bulldozer",
+            "price": 1000,
+            "rating": 4.2,
+            "reviewCount": 3
+          }
+        ],
+        "optionOffset": 0
+      },
+      "reply": "I've selected the top options for you. The first choice, 'Bulldozer', is highly recommended because it fits your budget exactly and has strong seller ratings.\n\n**Option 1:** Bulldozer\n\ud83d\udcb0 Price: **$1000** | \u2b50 Rating: **4.2** (3 reviews)\n\n",
+      "quickReplies": [
+        "Select Option 1",
+        "None of these"
+      ],
+      "updatedAt": "2026-04-06T14:24:52.388491"
     }
   }
 }

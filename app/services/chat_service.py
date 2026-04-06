@@ -28,6 +28,7 @@ from .history_service import HistoryService
 from .strategic_session_service import StrategicSessionService
 from .tool_service import ToolService
 from ..graph.purchase_graph import create_purchase_graph
+from ..graph.nodes.finalize_order import finalize_order
 from ..schemas.agent_state import AgentPurchaseState
 
 
@@ -141,62 +142,8 @@ class ChatService:
         intent = self.intent_router.detect(retrieval_query)
         active_topics = self._detect_active_topics(retrieval_query)
         format_style = detect_response_format(request_model.message)
-
-        if self.grounding_engine.is_greeting(request_model.message):
-            greeting_reply = self.grounding_engine.build_greeting_reply(safe_role)
-            reply_text = self._finalize_conversation_reply(
-                greeting_reply["reply"],
-                message=request_model.message,
-                intent="general",
-                role=safe_role,
-                format_style="paragraph",
-                active_topics=[],
-            )
-            return AgentReply(
-                reply=reply_text,
-                quick_replies=[],
-                source="greeting",
-                session_id=session_id,
-                metadata={
-                    "relatedQuestion": self._extract_related_question(
-                        reply_text,
-                        format_style="paragraph",
-                        message=request_model.message,
-                        intent="general",
-                        role=safe_role,
-                        active_topics=[],
-                    ),
-                    "style": "conversational",
-                },
-            )
-
-        if self.grounding_engine._looks_like_capability_question(request_model.message):
-            cap_reply = self.grounding_engine.build_capability_reply(safe_role)
-            reply_text = self._finalize_conversation_reply(
-                cap_reply["reply"],
-                message=request_model.message,
-                intent="general",
-                role=safe_role,
-                format_style="paragraph",
-                active_topics=[],
-            )
-            return AgentReply(
-                reply=reply_text,
-                quick_replies=[],
-                source="capability",
-                session_id=session_id,
-                metadata={
-                    "relatedQuestion": self._extract_related_question(
-                        reply_text,
-                        format_style="paragraph",
-                        message=request_model.message,
-                        intent="general",
-                        role=safe_role,
-                        active_topics=[],
-                    ),
-                    "style": "conversational",
-                },
-            )
+        greeting_mode = self.grounding_engine.is_greeting(request_model.message)
+        capability_mode = self.grounding_engine._looks_like_capability_question(request_model.message)
         
         website_context = self._build_combined_context(request_model, retrieval_query)
         
@@ -208,7 +155,9 @@ class ChatService:
             active_topics=active_topics
         )
 
-        if not grounded_items:
+        should_call_llm = greeting_mode or capability_mode or bool(grounded_items)
+
+        if not should_call_llm:
             reason = "out_of_scope" if not self.grounding_engine.looks_like_trusttrade_question(
                 request_model.message, intent, active_topics
             ) else "missing_context"
@@ -256,7 +205,9 @@ class ChatService:
                     active_topics=active_topics,
                     website_context=website_context,
                     intent=intent,
-                    format_style=format_style
+                    format_style=format_style,
+                    greeting_mode=greeting_mode,
+                    capability_mode=capability_mode,
                 )
                 
                 messages = [{"role": "system", "content": system_prompt}]
@@ -301,6 +252,8 @@ class ChatService:
                     metadata={
                         "relatedQuestion": related_question,
                         "style": "conversational",
+                        "greetingMode": greeting_mode,
+                        "capabilityMode": capability_mode,
                     },
                 )
             except Exception as e:
@@ -349,13 +302,19 @@ class ChatService:
         """
         user_id = request.user.id if request.user and request.user.id else "anonymous"
         session_id = request.session_id or "new_agent_session"
+        strategic_session_key = self._strategic_session_key(session_id)
 
         # Strategic 'Deal' state still persists ( LangGraph state ), but chat history is in request.
-        previous_state = self.strategic_session_service.get_session(session_id)
+        previous_state = self.strategic_session_service.get_session(strategic_session_key)
         history_payload = [{"role": item.role, "content": item.content} for item in request.history[-settings.max_history:]]
 
         if self._looks_like_cancel(request.message):
-            self._cancel_strategic_session(session_id, user_id, previous_state)
+            self._cancel_strategic_session(
+                public_session_id=session_id,
+                strategic_session_key=strategic_session_key,
+                user_id=user_id,
+                previous_state=previous_state,
+            )
             reply = AgentReply(
                 reply="The strategic purchase flow is cancelled. Type Start when you want to begin a new buying session.",
                 quick_replies=["Start", "Browse again"],
@@ -364,26 +323,30 @@ class ChatService:
             )
             return reply
 
-        if self._looks_like_payment_success(request.message):
-            self.strategic_session_service.clear_session(session_id)
-            reply = AgentReply(
-                reply="Payment verified. Your order has been recorded successfully, and this strategic session is now complete.",
-                quick_replies=["View My Orders", "Start New Hunt"],
-                source="langgraph-agent",
-                session_id=session_id,
-            )
-            return reply
+        checkout_reply = self._handle_checkout_confirmation(
+            previous_state,
+            request.message,
+            session_id,
+            strategic_session_key,
+        )
+        if checkout_reply is not None:
+            return checkout_reply
 
         if self._looks_like_more_options(request.message):
-            reply = self._build_more_options_reply(previous_state, session_id)
+            reply = self._build_more_options_reply(previous_state, session_id, strategic_session_key)
             return reply
 
         if self._looks_like_reset_options(request.message):
-            reply = self._build_more_options_reply(previous_state, session_id, reset=True)
+            reply = self._build_more_options_reply(
+                previous_state,
+                session_id,
+                strategic_session_key,
+                reset=True,
+            )
             return reply
 
         if self._looks_like_reject_options(request.message):
-            reply = self._build_rejection_reply(previous_state, session_id)
+            reply = self._build_rejection_reply(previous_state, session_id, strategic_session_key)
             return reply
 
         try:
@@ -396,13 +359,22 @@ class ChatService:
             )
 
             result_state = self._get_purchase_graph().invoke(initial_state)
-            try:
-                self.strategic_session_service.save_session(session_id, result_state)
-            except Exception as error:
-                print(f"⚠️ Strategic session save failed: {error}", file=sys.stderr)
+            if result_state.get("step") == "order_completed":
+                self.strategic_session_service.clear_session(strategic_session_key)
+            else:
+                try:
+                    self.strategic_session_service.save_session(strategic_session_key, result_state)
+                except Exception as error:
+                    print(f"⚠️ Strategic session save failed: {error}", file=sys.stderr)
 
-            reply_text = result_state.get('reply', 'Strategic processing ongoing...')
+            reply_text = (
+                result_state.get('reply')
+                or result_state.get('lastError')
+                or 'Strategic processing ongoing...'
+            )
             quick_replies = result_state.get('quickReplies', [])
+            if not quick_replies and result_state.get("lastError"):
+                quick_replies = ["Start", "Try again"]
             metadata = result_state.get('metadata', {})
 
             reply = AgentReply(
@@ -429,6 +401,9 @@ class ChatService:
         if self.purchase_graph is None:
             self.purchase_graph = create_purchase_graph()
         return self.purchase_graph
+
+    def _strategic_session_key(self, session_id: str) -> str:
+        return f"agent::{session_id or 'new_agent_session'}"
 
     def _build_strategic_state(
         self,
@@ -464,7 +439,17 @@ class ChatService:
             "metadata": metadata,
         }
 
-        categories = self.tool_service.get_categories()
+        if (
+            previous_state.get("step") in {"awaiting_confirmation", "payment_created", "payment_pending"}
+            and self._looks_like_payment_confirmation(message)
+        ):
+            state["step"] = "payment_verified"
+
+        categories = self.tool_service.get_categories() or metadata.get("categories") or [
+            "Electronics",
+            "Machinery",
+            "Furniture",
+        ]
         if categories and "categories" not in metadata:
             state["metadata"] = {
                 **metadata,
@@ -517,6 +502,22 @@ class ChatService:
         lowered = message.strip().lower()
         return "payment successful" in lowered or "order recorded" in lowered
 
+    def _looks_like_payment_confirmation(self, message: str) -> bool:
+        lowered = message.strip().lower()
+        payment_triggers = {
+            "pay",
+            "pay now",
+            "pay securely now",
+            "continue to payment",
+            "proceed to payment",
+            "confirm purchase",
+            "confirm order",
+            "place order",
+            "complete order",
+            "checkout",
+        }
+        return lowered in payment_triggers or "pay securely" in lowered
+
     def _looks_like_more_options(self, message: str) -> bool:
         return message.strip().lower() == "show more options"
 
@@ -528,20 +529,88 @@ class ChatService:
         lowered = message.strip().lower()
         return lowered in {"none of these", "none of these options", "something else", "browse again"}
 
-    def _cancel_strategic_session(self, session_id: str, user_id: str, previous_state: dict[str, Any]) -> None:
+    def _cancel_strategic_session(
+        self,
+        public_session_id: str,
+        strategic_session_key: str,
+        user_id: str,
+        previous_state: dict[str, Any],
+    ) -> None:
         reservation_id = previous_state.get("reservationId")
         if reservation_id:
             self.tool_service.cancel_purchase(
-                sessionId=session_id,
+                sessionId=public_session_id,
                 reservationId=reservation_id,
                 userId=user_id,
             )
-        self.strategic_session_service.clear_session(session_id)
+        self.strategic_session_service.clear_session(strategic_session_key)
+
+    def _handle_checkout_confirmation(
+        self,
+        previous_state: dict[str, Any],
+        message: str,
+        session_id: str,
+        strategic_session_key: str,
+    ) -> AgentReply | None:
+        current_step = previous_state.get("step")
+        if current_step not in {"awaiting_confirmation", "payment_created", "payment_pending"}:
+            return None
+
+        if self._looks_like_payment_success(message):
+            final_state = {
+                **previous_state,
+                "mode": "agent",
+                "step": "payment_verified",
+                "query": message,
+            }
+            completed_state = {
+                **final_state,
+                **finalize_order(final_state),
+            }
+            self.strategic_session_service.clear_session(strategic_session_key)
+            return AgentReply(
+                reply=completed_state.get("reply", "Your order has been placed successfully."),
+                quick_replies=completed_state.get("quickReplies", ["Start New Hunt", "View My Orders"]),
+                source="langgraph-agent",
+                session_id=session_id,
+                metadata=completed_state.get("metadata", previous_state.get("metadata", {})),
+            )
+
+        if self._looks_like_payment_confirmation(message):
+            pending_state = {
+                **previous_state,
+                "mode": "agent",
+                "step": "payment_pending",
+                "query": message,
+            }
+            self.strategic_session_service.save_session(strategic_session_key, pending_state)
+            return AgentReply(
+                reply=(
+                    "You're at the payment step now. Complete the secure checkout in the app, "
+                    "then tell me Payment Successful so I can finalize the order."
+                ),
+                quick_replies=["Payment Successful", "Cancel this purchase"],
+                source="langgraph-agent",
+                session_id=session_id,
+                metadata=pending_state.get("metadata", previous_state.get("metadata", {})),
+            )
+
+        return AgentReply(
+            reply=(
+                "This item is already reserved for you. Use Pay Securely Now to complete the order "
+                "or Cancel this purchase to release the reservation."
+            ),
+            quick_replies=["Pay Securely Now", "Cancel this purchase"],
+            source="langgraph-agent",
+            session_id=session_id,
+            metadata=previous_state.get("metadata", {}),
+        )
 
     def _build_more_options_reply(
         self,
         previous_state: dict[str, Any],
         session_id: str,
+        strategic_session_key: str,
         reset: bool = False,
     ) -> AgentReply:
         metadata = dict(previous_state.get("metadata", {}) or {})
@@ -568,7 +637,7 @@ class ChatService:
 
             metadata["optionOffset"] = next_offset
             self.strategic_session_service.save_session(
-                session_id,
+                strategic_session_key,
                 {
                     **previous_state,
                     "step": "awaiting_selection",
@@ -603,7 +672,7 @@ class ChatService:
 
             metadata["categoryOffset"] = next_offset
             self.strategic_session_service.save_session(
-                session_id,
+                strategic_session_key,
                 {
                     **previous_state,
                     "step": "collecting_filters",
@@ -633,7 +702,12 @@ class ChatService:
             metadata=metadata,
         )
 
-    def _build_rejection_reply(self, previous_state: dict[str, Any], session_id: str) -> AgentReply:
+    def _build_rejection_reply(
+        self,
+        previous_state: dict[str, Any],
+        session_id: str,
+        strategic_session_key: str,
+    ) -> AgentReply:
         metadata = dict(previous_state.get("metadata", {}) or {})
         metadata.pop("active_quote", None)
         search_results = metadata.get("search_results", []) or []
@@ -641,7 +715,7 @@ class ChatService:
         has_more_results = len(search_results) > option_offset + 3
 
         if has_more_results:
-            return self._build_more_options_reply(previous_state, session_id)
+            return self._build_more_options_reply(previous_state, session_id, strategic_session_key)
 
         return AgentReply(
             reply=(
@@ -691,6 +765,8 @@ class ChatService:
         website_context: str,
         intent: str,
         format_style: str,
+        greeting_mode: bool = False,
+        capability_mode: bool = False,
     ) -> str:
         format_instruction = format_instruction_for(format_style)
         prompt = [
@@ -710,8 +786,9 @@ class ChatService:
             "5. TONE: Sound natural, warm, sharp, and genuinely helpful like a polished chat assistant, not a stiff support bot.",
             "6. DYNAMIC STYLE: Make the answer feel specific to the user's exact question. Avoid canned phrasing, generic intros, or repetitive support-style wording.",
             "7. RELATABILITY: For normal conversational questions, you may use light humor and 0 to 2 relevant emojis, but do not become silly, childish, or unprofessional.",
-            "8. FOLLOW-UP: End the answer with one related open-ended question based on the user's latest message. Do not end with multiple-choice options inside the reply.",
-            "9. FORMATTING: Strictly follow the user's requested format (e.g., table, bullets, steps).",
+            "8. VARIETY: If the user repeats a greeting or asks a simple repeated question, vary your phrasing naturally instead of reusing the same sentence structure.",
+            "9. FOLLOW-UP: End the answer with one related open-ended question based on the user's latest message. Do not end with multiple-choice options inside the reply.",
+            "10. FORMATTING: Strictly follow the user's requested format (e.g., table, bullets, steps).",
             "",
             "Response contract:",
             "Return valid JSON with exactly two keys: reply and quick_replies.",
@@ -722,6 +799,27 @@ class ChatService:
             f"Requested reply format: {format_style}.",
             f"Formatting instruction: {format_instruction}",
         ]
+
+        if greeting_mode:
+            prompt.extend([
+                "",
+                "GREETING MODE:",
+                "The user is greeting you.",
+                "Respond with a natural, varied, human-sounding greeting.",
+                "Do not sound scripted or repetitive.",
+                "Briefly hint at the kinds of TrustTrade help you can offer.",
+                "Do not apologize for missing context in greeting mode.",
+            ])
+
+        if capability_mode:
+            prompt.extend([
+                "",
+                "CAPABILITY MODE:",
+                "The user is asking what you can help with.",
+                "Answer from the TrustTrade assistant role and describe the main supported areas such as marketplace, dashboard, profile, listings, negotiation, and checkout.",
+                "Keep it natural and specific to TrustTrade.",
+                "Do not apologize for missing website context in capability mode.",
+            ])
 
         if website_context:
             prompt.extend(["", "CRITICAL TRUSTTRADE KNOWLEDGE CONTEXT:", website_context])
@@ -842,8 +940,10 @@ class ChatService:
         lines = [line.strip() for line in text.splitlines() if line.strip()]
         for line in reversed(lines):
             candidate = re.sub(r"^[\-\d\.\)\s]+", "", line).strip()
-            if candidate.endswith("?"):
-                return candidate
+            sentences = [part.strip() for part in re.split(r"(?<=[.!?])\s+", candidate) if part.strip()]
+            for sentence in reversed(sentences):
+                if sentence.endswith("?"):
+                    return sentence
         return ""
 
     def _build_dynamic_follow_up_question(

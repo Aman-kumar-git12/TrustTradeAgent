@@ -13,7 +13,12 @@ def create_quote(state: AgentPurchaseState) -> Dict[str, Any]:
     quantity = state.get('quantity', 1)
     
     if not asset_id:
-        return {"lastError": "No asset selected for quoting."}
+        return {
+            "lastError": "No asset selected for quoting.",
+            "reply": "I need you to pick one of the options before I can create a live quote.",
+            "quickReplies": ["Show First Options", "Start"],
+            "step": "awaiting_selection",
+        }
     
     # 2. Call the authorized backend pricing tool
     quote = tools.create_quote(assetId=asset_id, quantity=quantity)
@@ -21,6 +26,8 @@ def create_quote(state: AgentPurchaseState) -> Dict[str, Any]:
     if not quote:
         return {
             "lastError": "Failed to generate a strategic quote. Please try again.",
+            "reply": "I could not generate a live quote for that asset right now. Please try again or choose a different option.",
+            "quickReplies": ["Try again", "Show First Options", "Start"],
             "step": "failed"
         }
     

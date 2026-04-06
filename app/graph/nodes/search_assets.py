@@ -26,7 +26,12 @@ def search_assets(state: AgentPurchaseState) -> Dict[str, Any]:
         return {
             "assetIds": [],
             "lastError": "No assets found matching your criteria.",
-            "step": "collecting_filters"
+            "step": "collecting_filters",
+            "reply": (
+                "I could not find a strong match for that search yet. "
+                "Try a different category, a broader keyword, or raise the budget a bit and I will search again."
+            ),
+            "quickReplies": ["Change category", "Change budget", "Start"],
         }
     
     # 3. Store the IDs for later selection
