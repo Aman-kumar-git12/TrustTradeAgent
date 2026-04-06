@@ -4,6 +4,7 @@ import json
 import re
 import sys
 import threading
+import traceback
 from typing import Any, List
 
 from ..core.intent_router import IntentRouter
@@ -386,7 +387,8 @@ class ChatService:
             )
             return reply
         except Exception as error:
-            print(f"⚠️ Strategic agent failure: {error}", file=sys.stderr)
+            print(f"⚠️ Strategic agent failure during invoke: {error}", file=sys.stderr)
+            traceback.print_exc(file=sys.stderr)
             return AgentReply(
                 reply=(
                     "Agent mode hit an execution problem before I could finish the buying flow. "
