@@ -14,6 +14,7 @@ class AgentPurchaseState(TypedDict, total=False):
         'collecting_filters',
         'showing_options',
         'awaiting_selection',
+        'awaiting_quantity',
         'quoted',
         'awaiting_confirmation',
         'payment_created',

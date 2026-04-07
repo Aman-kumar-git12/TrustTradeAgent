@@ -350,6 +350,8 @@ class ChatService:
             request.message,
             session_id,
             strategic_session_key,
+            user_id,
+            request.metadata or {},
         )
         if checkout_reply is not None:
             return checkout_reply
@@ -387,13 +389,88 @@ class ChatService:
                 field="category",
             )
 
+        if self._looks_like_add_more_quantity(request.message):
+            # Clear commercial constraints to trigger a new volume collection
+            previous_state["quantity"] = None
+            previous_state["quoteId"] = None
+            previous_state["reservationId"] = None
+            previous_state["paymentIntentId"] = None
+            previous_state["lastError"] = None
+            previous_state["step"] = "collecting_constraints" # This will route back to collect_quantity
+            self.strategic_session_service.save_session(strategic_session_key, previous_state)
+
+        if self._looks_like_go_back_to_selection(request.message):
+            # Return to the selection grid and clear the current reservation
+            if previous_state.get("reservationId"):
+                self.tool_service.cancel_purchase(
+                    sessionId=session_id,
+                    reservationId=previous_state["reservationId"],
+                    userId=user_id
+                )
+            previous_state["selectedAssetId"] = None
+            previous_state["quantity"] = None
+            previous_state["quoteId"] = None
+            previous_state["reservationId"] = None
+            previous_state["paymentIntentId"] = None
+            previous_state["step"] = "showing_options"
+            self.strategic_session_service.save_session(strategic_session_key, previous_state)
+
+        if self._looks_like_know_more_details(request.message):
+            # Set step to product_details to trigger the knowledge node
+            previous_state["step"] = "viewing_product_details"
+            self.strategic_session_service.save_session(strategic_session_key, previous_state)
+
+        if self._looks_like_negotiation_request(request.message):
+            # Start the negotiation flow and release any active reservation lock
+            if previous_state.get("reservationId"):
+                self.tool_service.cancel_purchase(
+                    sessionId=session_id,
+                    reservationId=previous_state["reservationId"],
+                    userId=user_id
+                )
+                previous_state["reservationId"] = None
+                previous_state["paymentIntentId"] = None
+                previous_state["quoteId"] = None
+
+            previous_state["step"] = "negotiating"
+            previous_state["negotiation_terms"] = None # Reset terms to prompt for new ones
+            self.strategic_session_service.save_session(strategic_session_key, previous_state)
+            # Skip capturing the prompt command as the terms
+        elif previous_state.get("step") == "negotiating" and not previous_state.get("negotiation_terms"):
+            # The current message is the negotiation words/terms
+            if not self._looks_like_go_back_to_selection(request.message):
+                previous_state["negotiation_terms"] = request.message
+                previous_state["step"] = "confirming_negotiation"
+                self.strategic_session_service.save_session(strategic_session_key, previous_state)
+
+        if previous_state.get("step") == "confirming_negotiation":
+            if self._looks_like_send_negotiate(request.message):
+                previous_state["negotiation_sent"] = True
+                # The graph will now call the tool
+                self.strategic_session_service.save_session(strategic_session_key, previous_state)
+            elif self._looks_like_payment_request(request.message):
+                # Proceed to payment bypass
+                return self._handle_payment_order(request, previous_state)
+
         if self._looks_like_broaden_search(request.message):
-            # Explicitly clear the budget and search results to allow a fresh wide search
+            # Explicitly clear the current shortlist and commercial state to allow a fresh wide search.
             previous_state["budgetMax"] = None
             previous_state["assetIds"] = None
+            previous_state["selectedAssetId"] = None
+            previous_state["quantity"] = None
+            previous_state["quoteId"] = None
+            previous_state["reservationId"] = None
+            previous_state["paymentIntentId"] = None
+            previous_state["orderId"] = None
+            previous_state["lastError"] = None
+            previous_state["expiresAt"] = None
             previous_state.get("metadata", {}).pop("search_results", None)
+            previous_state.get("metadata", {}).pop("optionOffset", None)
+            previous_state.get("metadata", {}).pop("categoryOffset", None)
+            previous_state.get("metadata", {}).pop("paymentOrder", None)
+            previous_state.get("metadata", {}).pop("backendError", None)
             previous_state.get("metadata", {}).pop("awaitingField", None)
-            previous_state["step"] = "showing_options" # Force it back to search phase
+            previous_state["step"] = "showing_options"
 
         try:
             initial_state = self._build_strategic_state(
@@ -418,6 +495,8 @@ class ChatService:
                 or result_state.get('lastError')
                 or 'Strategic processing ongoing...'
             )
+            if isinstance(reply_text, dict):
+                reply_text = reply_text.get("message") or reply_text.get("reply") or str(reply_text)
             quick_replies = result_state.get('quickReplies', [])
             if not quick_replies and result_state.get("lastError"):
                 quick_replies = ["Start", "Try again"]
@@ -520,7 +599,7 @@ class ChatService:
             "intent": previous_state.get("intent"),
             "category": previous_state.get("category"),
             "budgetMax": previous_state.get("budgetMax"),
-            "quantity": previous_state.get("quantity", 1),
+            "quantity": previous_state.get("quantity"),
             "assetIds": previous_state.get("assetIds"),
             "selectedAssetId": previous_state.get("selectedAssetId"),
             "reservationId": previous_state.get("reservationId"),
@@ -532,12 +611,6 @@ class ChatService:
             "explanation": previous_state.get("explanation"),
             "metadata": metadata,
         }
-
-        if (
-            previous_state.get("step") in {"awaiting_confirmation", "payment_created", "payment_pending"}
-            and self._looks_like_payment_confirmation(message)
-        ):
-            state["step"] = "payment_verified"
 
         categories = self._get_agent_categories(metadata)
         if categories:
@@ -590,7 +663,19 @@ class ChatService:
 
     def _looks_like_payment_success(self, message: str) -> bool:
         lowered = message.strip().lower()
-        return "payment successful" in lowered or "order recorded" in lowered
+        
+        # Guard: If they are saying "pay securely now", it's NOT a success confirmation yet.
+        if "pay securely" in lowered or "prepare" in lowered:
+            return False
+
+        return (
+            "payment successful" in lowered
+            or "record the order" in lowered
+            or "order recorded" in lowered
+            or "completed payment" in lowered
+            or "completed the payment" in lowered
+            or "paid already" in lowered
+        )
 
     def _looks_like_restart(self, message: str) -> bool:
         lowered = message.strip().lower()
@@ -608,6 +693,7 @@ class ChatService:
             "pay",
             "pay now",
             "pay securely now",
+            "order now",
             "continue to payment",
             "proceed to payment",
             "confirm purchase",
@@ -616,7 +702,81 @@ class ChatService:
             "complete order",
             "checkout",
         }
-        return lowered in payment_triggers or "pay securely" in lowered
+        return lowered in payment_triggers or "pay securely" in lowered or "order now" in lowered
+
+    def _looks_like_add_more_quantity(self, message: str) -> bool:
+        lowered = message.strip().lower()
+        patterns = (
+            r"\badd (?:more )?quantity\b",
+            r"\bchange (?:the )?quantity\b",
+            r"\bupdate (?:the )?quantity\b",
+            r"\b(?:more|different) units\b",
+        )
+        return any(re.search(pattern, lowered) for pattern in patterns) or "add more quantity" in lowered
+
+    def _looks_like_know_more_details(self, message: str) -> bool:
+        lowered = message.strip().lower()
+        patterns = (
+            r"\bknow (?:more )?details\b",
+            r"\bproduct (?:details|info|specifications?)\b",
+            r"\btell me more\b",
+            r"\bmore about (?:the )?product\b",
+        )
+        return any(re.search(pattern, lowered) for pattern in patterns) or "know more details" in lowered
+
+    def _looks_like_go_back_to_selection(self, message: str) -> bool:
+        lowered = message.strip().lower()
+        patterns = (
+            r"\bgo back\b",
+            r"\bback to (?:selection|shortlist|options)\b",
+            r"\bchoose another\b",
+            r"\bpick another\b",
+        )
+        return any(re.search(pattern, lowered) for pattern in patterns) or "go back" in lowered
+
+    def _looks_like_negotiation_request(self, message: str) -> bool:
+        lowered = message.strip().lower()
+        patterns = (
+            r"\bnegotiate\b",
+            r"\bdiscuss (?:the )?(?:price|terms|deal)\b",
+            r"\boffer\b",
+            r"\blower (?:the )?price\b",
+            r"\bbetter (?:deal|price)\b",
+            r"\bdiscount\b",
+        )
+        return any(re.search(pattern, lowered) for pattern in patterns) or "negotiate this" in lowered
+
+    def _looks_like_send_negotiate(self, message: str) -> bool:
+        lowered = message.strip().lower()
+        patterns = (
+            r"\bsend negotiate\b",
+            r"\bsubmit (?:offer|negotiation|terms)\b",
+            r"\bconfirm (?:offer|negotiation|terms)\b",
+            r"\bsend to seller\b",
+        )
+        return any(re.search(pattern, lowered) for pattern in patterns) or "send negotiate" in lowered
+
+    def _extract_payment_verification(self, metadata: dict[str, Any] | None) -> dict[str, str] | None:
+        if not isinstance(metadata, dict):
+            return None
+
+        candidates = [metadata.get("paymentVerification"), metadata]
+        for candidate in candidates:
+            if not isinstance(candidate, dict):
+                continue
+
+            order_id = candidate.get("razorpayOrderId") or candidate.get("razorpay_order_id")
+            payment_id = candidate.get("razorpayPaymentId") or candidate.get("razorpay_payment_id")
+            signature = candidate.get("razorpaySignature") or candidate.get("razorpay_signature")
+
+            if order_id and payment_id and signature:
+                return {
+                    "razorpayOrderId": str(order_id),
+                    "razorpayPaymentId": str(payment_id),
+                    "razorpaySignature": str(signature),
+                }
+
+        return None
 
     def _looks_like_more_options(self, message: str) -> bool:
         lowered = message.strip().lower()
@@ -761,6 +921,7 @@ class ChatService:
             "step": "collecting_filters",
             "assetIds": None,
             "selectedAssetId": None,
+            "quantity": None,
             "reservationId": None,
             "quoteId": None,
             "paymentIntentId": None,
@@ -835,32 +996,145 @@ class ChatService:
         message: str,
         session_id: str,
         strategic_session_key: str,
+        user_id: str,
+        request_metadata: dict[str, Any] | None,
     ) -> AgentReply | None:
         current_step = previous_state.get("step")
         if current_step not in {"awaiting_confirmation", "payment_created", "payment_pending"}:
             return None
 
-        if self._looks_like_payment_success(message):
-            final_state = {
-                **previous_state,
-                "mode": "agent",
-                "step": "payment_verified",
-                "query": message,
-            }
-            completed_state = {
-                **final_state,
-                **finalize_order(final_state),
-            }
-            self.strategic_session_service.clear_session(strategic_session_key)
+        # Stop trapping if the user explicitly wants to escape the checkout
+        if self._looks_like_go_back_to_selection(message) or self._looks_like_negotiation_request(message):
+            return None
+
+        verification = self._extract_payment_verification(request_metadata)
+        if verification:
+            completion = self.tool_service.complete_purchase(
+                razorpayOrderId=verification["razorpayOrderId"],
+                razorpayPaymentId=verification["razorpayPaymentId"],
+                razorpaySignature=verification["razorpaySignature"],
+            )
+            if completion:
+                final_metadata = {
+                    **(previous_state.get("metadata", {}) or {}),
+                    "paymentOrder": {
+                        **(((previous_state.get("metadata", {}) or {}).get("paymentOrder", {}) or {})),
+                        "status": "verified",
+                        "is_completed": True,
+                    },
+                    "completedPurchase": completion,
+                }
+                final_state = {
+                    **previous_state,
+                    "mode": "agent",
+                    "step": "payment_verified",
+                    "query": message,
+                    "orderId": completion.get("orderId") or completion.get("saleId"),
+                    "metadata": final_metadata,
+                }
+                completed_state = {
+                    **final_state,
+                    **finalize_order(final_state),
+                }
+                self.strategic_session_service.clear_session(strategic_session_key)
+                return AgentReply(
+                    reply=completed_state.get("reply", "Your order has been placed successfully."),
+                    quick_replies=completed_state.get("quickReplies", ["Start New Hunt", "View My Orders"]),
+                    source="langgraph-agent",
+                    session_id=session_id,
+                    metadata=completed_state.get("metadata", final_metadata),
+                )
+
+            failure_response = self._generate_agentic_reply(
+                objective="Explain that payment verification failed or could not be completed, and keep the user in a safe pending state.",
+                context={
+                    "previous_state": previous_state,
+                    "verification": verification,
+                    "tool_error": self.tool_service.last_error,
+                },
+                fallback_reply=(
+                    "I couldn't verify that payment with the backend yet, so I won't close the order. "
+                    "Please retry the payment verification from the app or cancel the reservation."
+                ),
+                fallback_quick_replies=["Cancel this purchase", "Start"],
+            )
             return AgentReply(
-                reply=completed_state.get("reply", "Your order has been placed successfully."),
-                quick_replies=completed_state.get("quickReplies", ["Start New Hunt", "View My Orders"]),
+                reply=failure_response["reply"],
+                quick_replies=failure_response["quick_replies"],
                 source="langgraph-agent",
                 session_id=session_id,
-                metadata=completed_state.get("metadata", previous_state.get("metadata", {})),
+                metadata=previous_state.get("metadata", {}),
             )
 
         if self._looks_like_payment_confirmation(message):
+            metadata = dict(previous_state.get("metadata", {}) or {})
+            payment_order = metadata.get("paymentOrder")
+
+            if not payment_order:
+                payment_order = self.tool_service.create_payment_order(
+                    assetId=previous_state.get("selectedAssetId"),
+                    quantity=previous_state.get("quantity", 1) or 1,
+                    reservationId=previous_state.get("reservationId"),
+                    sessionId=session_id,
+                    userId=user_id,
+                )
+                if not payment_order:
+                    failure_response = self._generate_agentic_reply(
+                        objective="Explain that secure checkout could not be prepared and offer the safest next steps.",
+                        context={
+                            "previous_state": previous_state,
+                            "tool_error": self.tool_service.last_error,
+                        },
+                        fallback_reply=(
+                            "I couldn't prepare a verified payment order for this reservation yet. "
+                            "Please try again, or cancel this purchase so we can start clean."
+                        ),
+                        fallback_quick_replies=["Try again", "Cancel this purchase", "Start"],
+                    )
+                    return AgentReply(
+                        reply=failure_response["reply"],
+                        quick_replies=failure_response["quick_replies"],
+                        source="langgraph-agent",
+                        session_id=session_id,
+                        metadata=metadata,
+                    )
+
+            metadata["paymentOrder"] = {
+                **payment_order,
+                "status": "created",
+            }
+            pending_state = {
+                **previous_state,
+                "mode": "agent",
+                "step": "payment_created",
+                "query": message,
+                "paymentIntentId": payment_order.get("paymentIntentId"),
+                "metadata": metadata,
+            }
+            self.strategic_session_service.save_session(strategic_session_key, pending_state)
+            dynamic_response = self._generate_agentic_reply(
+                objective="Tell the user secure checkout is prepared, and explain that the order will only finalize after backend payment verification arrives.",
+                context={
+                    "previous_state": previous_state,
+                    "pending_state": pending_state,
+                    "user_message": message,
+                    "payment_order": payment_order,
+                },
+                fallback_reply=(
+                    "I prepared the secure checkout order for this reservation. Complete payment in the app using the attached payment metadata. "
+                    "Once the app sends the verified payment details back, I can finalize the order."
+                ),
+                fallback_quick_replies=["I completed payment in the app", "Cancel this purchase"],
+            )
+            return AgentReply(
+                reply=dynamic_response["reply"],
+                quick_replies=dynamic_response["quick_replies"],
+                source="langgraph-agent",
+                session_id=session_id,
+                metadata=pending_state.get("metadata", metadata),
+            )
+
+        if self._looks_like_payment_success(message):
             pending_state = {
                 **previous_state,
                 "mode": "agent",
@@ -869,17 +1143,17 @@ class ChatService:
             }
             self.strategic_session_service.save_session(strategic_session_key, pending_state)
             dynamic_response = self._generate_agentic_reply(
-                objective="Tell the user they are now at the payment step and should return after payment so the order can be finalized.",
+                objective="Explain that chat text alone is not enough to verify payment, and that backend verification is still required before closing the order.",
                 context={
                     "previous_state": previous_state,
                     "pending_state": pending_state,
                     "user_message": message,
                 },
                 fallback_reply=(
-                    "You're at the payment step now. Complete the secure checkout in the app, "
-                    "then tell me Payment Successful so I can finalize the order."
+                    "I noted that you completed payment, but I still need the verified checkout payload from the app before I can close the order. "
+                    "Once backend verification arrives, I can finalize it safely."
                 ),
-                fallback_quick_replies=["Payment Successful", "Cancel this purchase"],
+                fallback_quick_replies=["Cancel this purchase", "Start"],
             )
             return AgentReply(
                 reply=dynamic_response["reply"],
@@ -948,6 +1222,7 @@ class ChatService:
                 )
 
             metadata["optionOffset"] = next_offset
+            metadata["active_options"] = window
             self.strategic_session_service.save_session(
                 strategic_session_key,
                 {
@@ -1146,6 +1421,7 @@ class ChatService:
             "8. VARIETY: If the user repeats a greeting or asks a simple repeated question, vary your phrasing naturally instead of reusing the same sentence structure.",
             "9. FOLLOW-UP: End the answer with one related open-ended question based on the user's latest message. Do not end with multiple-choice options inside the reply.",
             "10. FORMATTING: Strictly follow the user's requested format (e.g., table, bullets, steps).",
+            "11. CURRENCY: Always use the Rupee symbol (₹) for prices (e.g., ₹50,258).",
             "",
             "Response contract:",
             "Return valid JSON with exactly two keys: reply and quick_replies.",

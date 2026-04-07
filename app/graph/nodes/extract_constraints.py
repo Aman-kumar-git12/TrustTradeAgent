@@ -95,19 +95,25 @@ def _extract_budget_from_text(query: str, awaiting_field: str | None = None) -> 
     return None
 
 
-def _extract_quantity_from_text(query: str) -> int | None:
+def _extract_quantity_from_text(query: str, awaiting_field: str | None = None) -> int | None:
+    # 1. Try pattern match: "5 units", "x3", "10x"
     quantity_match = re.search(
         r'\b(\d+)\s*(?:units?|pieces?|items?|assets?|business(?:es)?)\b|\bx\s*(\d+)\b|\b(\d+)x\b',
         query,
         flags=re.IGNORECASE,
     )
-    if not quantity_match:
-        return None
+    if quantity_match:
+        for candidate in quantity_match.groups():
+            quantity = _coerce_quantity(candidate)
+            if quantity is not None:
+                return quantity
 
-    for candidate in quantity_match.groups():
-        quantity = _coerce_quantity(candidate)
-        if quantity is not None:
-            return quantity
+    # 2. If specifically asking for quantity, try a direct number match
+    if awaiting_field == "quantity":
+        direct_match = re.search(r'\b(\d+)\b', query)
+        if direct_match:
+            return _coerce_quantity(direct_match.group(1))
+
     return None
 
 
@@ -244,7 +250,7 @@ def extract_constraints(state: AgentPurchaseState) -> Dict[str, Any]:
 
     local_budget = _extract_budget_from_text(query, awaiting_field=awaiting_field)
     local_category = _extract_category_from_text(query, categories)
-    local_quantity = _extract_quantity_from_text(query)
+    local_quantity = _extract_quantity_from_text(query, awaiting_field=awaiting_field)
     local_reset = _detect_local_reset(query)
 
     agent = TrustTradeAgent()
@@ -253,12 +259,9 @@ def extract_constraints(state: AgentPurchaseState) -> Dict[str, Any]:
         "Your goal is to extract shopping constraints from a user query into a clean JSON format.\n\n"
         "FIELDS TO EXTRACT:\n"
         "- category: The product category. MUST match one of the provided categories if a close match exists.\n"
-        "- budgetMax: The maximum numerical budget (float). If 'under 5000', budgetMax is 5000.0.\n"
-        "- quantity: Numerical quantity (integer). Default is 1.\n"
+        "- budgetMax: The maximum numerical budget (float).\n"
+        "- quantity: Numerical quantity (integer). If the user just says a number and I am asking for quantity, extract it here.\n"
         "- reset: (boolean) Set to true if the user wants to 'start over', 'clear filters', or 'broaden' their search.\n\n"
-        "SPECIAL INSTRUCTIONS:\n"
-        "- If the user says 'Increase budget' or 'Clear budget', set budgetMax to null.\n"
-        "- If the user says 'Broaden search' or 'Remove category', set category to null.\n"
         f"AVAILABLE CATEGORIES: {', '.join(categories) if categories else 'None provided'}\n\n"
         "RESPONSE FORMAT:\n"
         "Return ONLY a JSON object with keys: category, budgetMax, quantity, reset."
@@ -298,7 +301,21 @@ def extract_constraints(state: AgentPurchaseState) -> Dict[str, Any]:
 
     quantity = _coerce_quantity(extracted.get("quantity"))
     if quantity is None:
-        quantity = local_quantity if local_quantity is not None else state.get("quantity") or 1
+        if local_quantity is not None:
+            quantity = local_quantity
+        elif is_reset:
+            quantity = None
+        elif state.get("selectedAssetId") or state.get("step") in {
+            "awaiting_quantity",
+            "quoted",
+            "awaiting_confirmation",
+            "payment_created",
+            "payment_pending",
+            "payment_verified",
+        }:
+            quantity = state.get("quantity")
+        else:
+            quantity = None
 
     updates = {
         "budgetMax": budget,

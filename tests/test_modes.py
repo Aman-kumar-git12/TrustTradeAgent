@@ -120,6 +120,21 @@ class ChatServiceModeTests(unittest.TestCase):
     ) -> None:
         service = self._build_agent_service()
         service.tool_service.get_categories.return_value = ["Electronics", "Machinery", "Furniture"]
+        service.tool_service.create_payment_order.return_value = {
+            "paymentIntentId": "payment-intent-1",
+            "razorpayOrderId": "order_123",
+            "amount": 999.5,
+            "currency": "INR",
+            "keyId": "rzp_test_key",
+        }
+        service.tool_service.complete_purchase.return_value = {
+            "success": True,
+            "saleId": "sale-1",
+            "orderId": "sale-1",
+            "assetId": "asset-1",
+            "quantity": 1,
+            "totalAmount": 999.5,
+        }
 
         mock_search_assets.return_value = [
             {
@@ -180,9 +195,25 @@ class ChatServiceModeTests(unittest.TestCase):
                 sessionId=session_id,
             ),
         )
-        self.assertIn("secured this item", reservation_reply.reply.lower())
+        self.assertIn("how many", reservation_reply.reply.lower())
+        self.assertEqual(mock_create_quote.call_count, 0)
+        self.assertEqual(mock_reserve_inventory.call_count, 0)
+
+        quantity_reply = ChatService.handle(
+            service,
+            ChatRequest(
+                message="2 units",
+                mode="agent",
+                user=user,
+                history=[],
+                sessionId=session_id,
+            ),
+        )
+        self.assertIn("secured this item", quantity_reply.reply.lower())
         self.assertEqual(mock_create_quote.call_count, 1)
         self.assertEqual(mock_reserve_inventory.call_count, 1)
+        self.assertEqual(mock_create_quote.call_args.kwargs["quantity"], 2)
+        self.assertEqual(mock_reserve_inventory.call_args.kwargs["quantity"], 2)
 
         completion_reply = ChatService.handle(
             service,
@@ -194,20 +225,28 @@ class ChatServiceModeTests(unittest.TestCase):
                 sessionId=session_id,
             ),
         )
-        self.assertIn("payment step", completion_reply.reply.lower())
+        self.assertIn("checkout", completion_reply.reply.lower())
         self.assertEqual(mock_create_quote.call_count, 1)
         self.assertEqual(mock_reserve_inventory.call_count, 1)
         pending_state = service.strategic_session_service.get_session(
             service._strategic_session_key(session_id)
         )
-        self.assertEqual(pending_state.get("step"), "payment_pending")
+        self.assertEqual(pending_state.get("step"), "payment_created")
+        self.assertEqual(pending_state.get("paymentIntentId"), "payment-intent-1")
 
         finalized_reply = ChatService.handle(
             service,
             ChatRequest(
-                message="Payment Successful",
+                message="I completed payment in the app",
                 mode="agent",
                 user=user,
+                metadata={
+                    "paymentVerification": {
+                        "razorpayOrderId": "order_123",
+                        "razorpayPaymentId": "pay_123",
+                        "razorpaySignature": "sig_123",
+                    }
+                },
                 history=[],
                 sessionId=session_id,
             ),

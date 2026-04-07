@@ -33,16 +33,46 @@ class TrustTradeAgent:
 
     def chat(self, messages: list, temperature: float = 0.3, max_tokens: int = 1024) -> str:
         """
-        The only job of this method is talking to the API.
+        Talks to the Groq API strictly using the primary model.
         """
         if not self.client:
             raise RuntimeError("Groq API key not configured.")
 
-        completion = self.client.chat.completions.create(
-            messages=messages,
-            model=self.model,
-            temperature=temperature,
-            max_tokens=max_tokens,
-            response_format={"type": "json_object"},
-        )
-        return completion.choices[0].message.content
+        # Higher-availability fallback model
+        # NOTE: This MUST be different from the primary model (llama-3.3-70b-versatile)
+        FALLBACK_MODEL = "llama-3.1-8b-instant"
+
+        def call_groq(model_name: str) -> str:
+            completion = self.client.chat.completions.create(
+                messages=messages,
+                model=model_name,
+                temperature=temperature,
+                max_tokens=max_tokens,
+                response_format={"type": "json_object"},
+            )
+            raw_content = completion.choices[0].message.content
+            # Clean JSON Response: Strip preamble and suffix
+            if raw_content:
+                start_idx = raw_content.find('{')
+                end_idx = raw_content.rfind('}')
+                if start_idx != -1 and end_idx != -1:
+                    return raw_content[start_idx : end_idx + 1]
+            return raw_content
+
+        try:
+            return call_groq(self.model)
+        except Exception as error:
+            # Check for Rate Limit (429) OR Model Decommissioned (400)
+            error_str = str(error).lower()
+            if "rate limit" in error_str or "429" in error_str or "model" in error_str:
+                if self.model != FALLBACK_MODEL:
+                    print(f"⚠️ Primary Model ({self.model}) failed/limited. Falling back to {FALLBACK_MODEL}...")
+                    try:
+                        return call_groq(FALLBACK_MODEL)
+                    except Exception as fallback_error:
+                        print(f"❌ Fallback Model failed: {fallback_error}")
+                        raise fallback_error
+            
+            # Re-raise other errors
+            print(f"❌ LLM Interaction Failure: {error}")
+            raise error

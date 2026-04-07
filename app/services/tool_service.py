@@ -85,10 +85,37 @@ class ToolService:
             "sessionId": sessionId,
             "userId": userId,
         })
+
+    def create_payment_order(self, assetId, quantity, reservationId, sessionId=None, userId=None):
+        return self._call_backend("POST", "/api/agent/payment-order", payload={
+            "assetId": assetId,
+            "quantity": quantity,
+            "reservationId": reservationId,
+            "sessionId": sessionId,
+            "userId": userId,
+        })
+
+    def complete_purchase(self, razorpayOrderId, razorpayPaymentId, razorpaySignature):
+        return self._call_backend("POST", "/api/agent/complete-purchase", payload={
+            "razorpayOrderId": razorpayOrderId,
+            "razorpayPaymentId": razorpayPaymentId,
+            "razorpaySignature": razorpaySignature,
+        })
     
-    def cancel_purchase(self, sessionId, reservationId=None, userId=None):
         return self._call_backend("POST", "/api/agent/cancel", payload={
             "sessionId": sessionId,
             "reservationId": reservationId,
+            "userId": userId,
+        })
+
+    def get_asset(self, assetId):
+        return self._call_backend("GET", f"/api/agent/asset/{assetId}")
+
+    def record_negotiation(self, assetId, quantity, message, sessionId=None, userId=None):
+        return self._call_backend("POST", "/api/agent/negotiate", payload={
+            "assetId": assetId,
+            "quantity": quantity,
+            "message": message,
+            "sessionId": sessionId,
             "userId": userId,
         })

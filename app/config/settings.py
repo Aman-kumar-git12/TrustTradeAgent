@@ -12,7 +12,7 @@ from dotenv import load_dotenv
 # Path resolution:
 # Agent/app/config/settings.py -> parents[2] reaches the Agent/ directory
 ROOT_DIR = Path(__file__).resolve().parents[2]
-load_dotenv(ROOT_DIR / '.env')
+load_dotenv(ROOT_DIR / '.env', override=True)
 
 
 def _env_flag(name: str, default: bool) -> bool:
@@ -33,7 +33,7 @@ class Settings:
     # Default to Groq-only mode unless semantic retrieval is explicitly enabled.
     enable_semantic_search: bool = _env_flag('ENABLE_SEMANTIC_SEARCH', False)
     groq_api_key: str = os.getenv('GROQ_API_KEY', '')
-    groq_model: str = 'llama-3.3-70b-versatile'
+    groq_model: str = 'llama-3.1-8b-instant'
     warmup_api_key: str = os.getenv('AGENT_WARMUP_KEY', '')
     
     # Backend Integration

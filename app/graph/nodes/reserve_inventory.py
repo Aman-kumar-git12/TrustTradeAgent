@@ -74,8 +74,8 @@ def reserve_inventory(state: AgentPurchaseState) -> Dict[str, Any]:
             "quote": (state.get("metadata", {}) or {}).get("active_quote", {}),
             "reservation": reservation,
         },
-        fallback_reply="I secured this item for you for the next 15 minutes. Review the quote below, then you can pay securely or cancel the reservation.",
-        fallback_quick_replies=["Pay Securely Now", "Cancel this purchase"],
+        fallback_reply="I secured this item for you for the next 15 minutes. Review the quote below, then you can proceed with the order or explore more options.",
+        fallback_quick_replies=["Order Now", "Negotiate this", "Add more quantity", "Know more details about product", "Go Back"],
     )
 
     return {

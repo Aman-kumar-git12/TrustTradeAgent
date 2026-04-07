@@ -99,6 +99,13 @@ class ChatModeSeparationTests(unittest.TestCase):
 
     def test_agent_payment_step_does_not_finalize_early(self) -> None:
         service = self.make_service()
+        service.tool_service.create_payment_order.return_value = {
+            "paymentIntentId": "payment-intent-1",
+            "razorpayOrderId": "order_123",
+            "amount": 999.5,
+            "currency": "INR",
+            "keyId": "rzp_test_key",
+        }
         service.strategic_session_service.get_session.return_value = {
             "step": "awaiting_confirmation",
             "selectedAssetId": "asset-1",
@@ -118,22 +125,26 @@ class ChatModeSeparationTests(unittest.TestCase):
         )
 
         self.assertEqual(reply.source, "langgraph-agent")
-        self.assertIn("payment step", reply.reply.lower())
-        self.assertIn("Payment Successful", reply.quick_replies)
+        self.assertIn("checkout", reply.reply.lower())
+        self.assertIn("I completed payment in the app", reply.quick_replies)
         service.strategic_session_service.save_session.assert_called_once()
         save_args = service.strategic_session_service.save_session.call_args
         self.assertEqual(save_args.args[0], "agent::shared-session")
-        self.assertEqual(save_args.args[1]["step"], "payment_pending")
+        self.assertEqual(save_args.args[1]["step"], "payment_created")
+        self.assertEqual(save_args.args[1]["paymentIntentId"], "payment-intent-1")
         service.strategic_session_service.clear_session.assert_not_called()
 
-    def test_agent_payment_success_finalizes_and_clears_agent_state(self) -> None:
+    def test_agent_payment_success_without_verification_stays_pending(self) -> None:
         service = self.make_service()
         service.strategic_session_service.get_session.return_value = {
-            "step": "payment_pending",
+            "step": "payment_created",
             "selectedAssetId": "asset-1",
             "quoteId": "quote-1",
             "reservationId": "reserve-1",
-            "metadata": {"active_quote": {"quoteId": "quote-1"}},
+            "metadata": {
+                "active_quote": {"quoteId": "quote-1"},
+                "paymentOrder": {"paymentIntentId": "payment-intent-1", "razorpayOrderId": "order_123"},
+            },
         }
 
         reply = service.handle(
@@ -147,7 +158,52 @@ class ChatModeSeparationTests(unittest.TestCase):
         )
 
         self.assertEqual(reply.source, "langgraph-agent")
-        self.assertIn("order has been placed", reply.reply.lower())
+        self.assertIn("still need", reply.reply.lower())
+        service.strategic_session_service.save_session.assert_called_once()
+        save_args = service.strategic_session_service.save_session.call_args
+        self.assertEqual(save_args.args[1]["step"], "payment_pending")
+        service.strategic_session_service.clear_session.assert_not_called()
+
+    def test_agent_payment_success_with_verification_finalizes_and_clears_agent_state(self) -> None:
+        service = self.make_service()
+        service.tool_service.complete_purchase.return_value = {
+            "success": True,
+            "saleId": "sale-1",
+            "orderId": "sale-1",
+            "assetId": "asset-1",
+            "quantity": 1,
+            "totalAmount": 999.5,
+        }
+        service.strategic_session_service.get_session.return_value = {
+            "step": "payment_created",
+            "selectedAssetId": "asset-1",
+            "quoteId": "quote-1",
+            "reservationId": "reserve-1",
+            "metadata": {
+                "active_quote": {"quoteId": "quote-1"},
+                "paymentOrder": {"paymentIntentId": "payment-intent-1", "razorpayOrderId": "order_123"},
+            },
+        }
+
+        reply = service.handle(
+            ChatRequest(
+                message="I completed payment in the app",
+                mode="agent",
+                sessionId="shared-session",
+                metadata={
+                    "paymentVerification": {
+                        "razorpayOrderId": "order_123",
+                        "razorpayPaymentId": "pay_123",
+                        "razorpaySignature": "sig_123",
+                    }
+                },
+                user=UserInfo(id="u1", fullName="User One", role="buyer"),
+                history=[],
+            )
+        )
+
+        self.assertEqual(reply.source, "langgraph-agent")
+        self.assertIn("order", reply.reply.lower())
         service.strategic_session_service.clear_session.assert_called_once_with("agent::shared-session")
         service.strategic_session_service.save_session.assert_not_called()
 

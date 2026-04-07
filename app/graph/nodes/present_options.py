@@ -43,8 +43,16 @@ def present_options(state: AgentPurchaseState) -> Dict[str, Any]:
     if start_index > 0:
         quick_replies.append("Show First Options")
     
+    # 3. Form final metadata for UI
+    next_metadata = {
+        **metadata,
+        "active_options": visible_results,
+        "optionOffset": start_index,
+    }
+
     return {
         "reply": reply,
         "quickReplies": quick_replies,
-        "step": "awaiting_selection"
+        "step": "awaiting_selection",
+        "metadata": next_metadata,
     }

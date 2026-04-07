@@ -39,6 +39,7 @@ def _reset_search_metadata(state: AgentPurchaseState) -> dict[str, Any]:
     }
     metadata.pop("search_results", None)
     metadata.pop("optionOffset", None)
+    metadata.pop("categoryOffset", None)
     metadata.pop("active_quote", None)
     return metadata
 
@@ -112,8 +113,9 @@ def search_assets(state: AgentPurchaseState) -> Dict[str, Any]:
                 "role": "system", 
                 "content": (
                     "You are the TrustTrade Strategic Assistant. The user searched for an asset but nothing was found. "
-                    "Analyze the search criteria and explain why it might have failed (e.g. budget too low, "
-                    "no specific matches in this category) and suggest how to fix it.\n\n"
+                    "Explain the exact filters that were used and give only safe, non-speculative next steps. "
+                    "Do not claim a root cause unless it is directly supported by the search facts provided. "
+                    "You may say that no active in-stock assets matched the exact filters.\n\n"
                     "Use ₹ currency symbol. Return ONLY a JSON object with keys: reply, quick_replies (list of strings)."
                 )
             },
@@ -127,8 +129,19 @@ def search_assets(state: AgentPurchaseState) -> Dict[str, Any]:
             raw_response = agent.chat(messages, temperature=0.7)
             error_data = json.loads(raw_response)
         except Exception:
+            active_filters = []
+            if category:
+                active_filters.append(f'category "{category}"')
+            if budgetMax is not None:
+                active_filters.append(f"budget up to ₹{budgetMax:,.2f}")
+            if search_term:
+                active_filters.append(f'text query "{search_term}"')
+            filter_text = ", ".join(active_filters) if active_filters else "the current filters"
             error_data = {
-                "reply": "I couldn't find any matches. Try a different category or a higher budget in ₹.",
+                "reply": (
+                    f"I couldn't find any active in-stock matches for {filter_text}. "
+                    "Try changing the category, broadening the search term, or increasing the budget."
+                ),
                 "quick_replies": ["Change category", "Change budget", "Start"]
             }
 

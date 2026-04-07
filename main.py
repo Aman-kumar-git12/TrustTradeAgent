@@ -187,7 +187,9 @@ async def delete_session(
     chat_service: ChatService = Depends(get_chat_service)
 ):
     # 1. Clear strategic/transactional state first
-    chat_service.strategic_session_service.clear_session(session_id)
+    chat_service.strategic_session_service.clear_session(
+        chat_service._strategic_session_key(session_id)
+    )
     
     # 2. Mark historical session as deleted
     success = chat_service.history_service.delete_session(session_id)
