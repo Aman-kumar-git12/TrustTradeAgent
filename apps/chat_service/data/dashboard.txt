@@ -1,0 +1,57 @@
+Dashboard
+
+Purpose
+Dashboard is the role-based operational hub of TrustTrade.
+
+Main routing behavior
+- admin -> /admin
+- seller -> /dashboard/seller/select
+- buyer -> /dashboard/buyer/:userId/orders
+- default -> /home
+
+Seller dashboard routes
+- /dashboard/seller
+- /dashboard/seller/select
+- /dashboard/seller/:businessId
+- /dashboard/seller/:businessId/leads
+- /dashboard/seller/:businessId/listings
+- /dashboard/seller/:businessId/analytics
+
+Seller dashboard responsibilities
+- choose or switch businesses
+- manage incoming leads
+- manage listings
+- inspect analytics
+- move from browsing into operational action
+
+Buyer dashboard routes
+- /dashboard/buyer/:userId
+- /dashboard/buyer/:userId/orders
+- /dashboard/buyer/:userId/interest
+- /dashboard/buyer/:userId/intelligence
+
+Buyer dashboard responsibilities
+- track interests
+- review accepted deals
+- manage order progress
+- move toward checkout or payment
+
+Admin routes
+- /admin
+- /admin/orders
+- /admin/users
+- /admin/support
+- /admin/businesses
+
+Why it matters
+- Dashboard is where users stop browsing and start managing real work.
+- Sellers get a business command center.
+- Buyers get a deal-tracking workspace.
+- Admins get a platform control panel.
+
+Useful AI keywords
+- seller hub
+- buyer orders
+- analytics
+- leads
+- admin panel

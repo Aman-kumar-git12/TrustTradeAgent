@@ -10,8 +10,8 @@ ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
     sys.path.append(str(ROOT))
 
-from app.schemas.chat import ChatRequest, UserInfo
-from app.services.chat_service import ChatService
+from shared.schemas.chat import ChatRequest, UserInfo
+from apps.chat_service.services.chat_service import ChatService
 
 
 class FakeAgent:
@@ -241,9 +241,9 @@ class ModeIsolationTests(unittest.TestCase):
         }
 
         with (
-            patch("app.services.tool_service.ToolService.search_assets", return_value=assets),
-            patch("app.services.tool_service.ToolService.create_quote", return_value=quote),
-            patch("app.services.tool_service.ToolService.reserve_inventory", return_value=reservation),
+            patch("apps.purchasing_service.services.tool_service.ToolService.search_assets", return_value=assets),
+            patch("apps.purchasing_service.services.tool_service.ToolService.create_quote", return_value=quote),
+            patch("apps.purchasing_service.services.tool_service.ToolService.reserve_inventory", return_value=reservation),
         ):
             start_response = service.handle(
                 ChatRequest(

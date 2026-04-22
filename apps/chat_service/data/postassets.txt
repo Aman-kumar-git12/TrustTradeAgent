@@ -1,0 +1,38 @@
+Post Assets
+
+Purpose
+Post Assets is the seller workflow for creating a new marketplace listing.
+
+Main routes
+- /post-asset
+- /post-assets/:businessId
+
+Flow
+1. Seller chooses a business.
+2. Seller opens the asset form for that business.
+3. Seller enters title, description, category, condition, price, location, and images.
+4. Seller submits the asset to the backend.
+5. Seller is redirected back to the business or dashboard flow.
+
+Business selection behavior
+- Loads the seller's businesses from the backend.
+- Prompts the user to create a business if none exist.
+- Uses the selected business as the asset owner context.
+
+Asset form behavior
+- Supports a standard category list.
+- Supports custom categories.
+- Supports direct image URLs.
+- Supports file upload through the image endpoint.
+- Allows multiple images with a cap.
+
+Why it matters
+- Listing quality affects search relevance, trust, and lead generation.
+- This is the supply creation path for the marketplace.
+
+Useful AI keywords
+- create listing
+- publish asset
+- seller workflow
+- business selection
+- upload images

@@ -1,0 +1,2 @@
+"""Auth middleware stub."""
+

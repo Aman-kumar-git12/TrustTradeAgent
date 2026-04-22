@@ -1,0 +1,2 @@
+"""Check inventory node stub."""
+

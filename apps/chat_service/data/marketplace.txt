@@ -1,0 +1,54 @@
+Marketplace
+
+Purpose
+Marketplace is the main asset discovery area of TrustTrade.
+
+Main routes
+- /marketplace
+- /marketplace/filter
+
+Who uses it
+- guests
+- buyers
+- sellers who want to inspect the market
+
+What it supports
+- search by keyword
+- category filtering
+- price range filtering
+- location filtering
+- condition filtering
+- apply and clear filters
+- infinite scroll loading
+- asset cards with quick summary data
+
+Supported categories in the UI
+- Industrial
+- Vehicles
+- IT Hardware
+- Real Estate
+- Electronics
+- Other
+
+Supported conditions in the UI
+- New
+- Used - Like New
+- Used - Good
+- Used - Fair
+
+How it works
+1. The page restores filter state from context when available.
+2. It sends query parameters to the backend asset endpoint.
+3. It loads matching assets into the grid.
+4. It loads more assets with infinite scroll.
+
+Why it matters
+- Marketplace is the top of the deal funnel.
+- It is where buyers compare options and sellers compete for attention.
+
+Useful AI keywords
+- browse assets
+- filter listings
+- compare listings
+- shortlist assets
+- marketplace search

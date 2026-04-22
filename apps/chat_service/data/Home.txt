@@ -1,0 +1,37 @@
+Home Page
+
+Purpose
+The Home page is the signed-in overview screen after login. It combines discovery, promotions, and quick next actions.
+
+Main route
+- /home
+
+Who uses it
+- buyers
+- sellers
+- admins with authenticated access
+
+What it shows
+- featured event or campaign content
+- marketplace highlights
+- trending assets
+- new arrivals
+- role-aware action buttons
+
+How it works
+- Loads home stats from the backend.
+- Loads featured event data.
+- Uses those responses to render the hero section and discovery cards.
+
+Why it matters
+- It is the bridge between login and deeper workflows.
+- It is not the full seller dashboard.
+- It is not the checkout page.
+- It is not the main lead-management workspace.
+
+Useful AI keywords
+- signed-in overview
+- featured event
+- marketplace highlights
+- post login landing
+- dashboard shortcut

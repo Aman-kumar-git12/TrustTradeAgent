@@ -1,0 +1,2 @@
+"""Shared user model stub."""
+

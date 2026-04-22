@@ -1,0 +1,2 @@
+"""Payment status node stub."""
+

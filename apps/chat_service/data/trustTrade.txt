@@ -1,0 +1,50 @@
+TrustTrade Platform Overview
+
+TrustTrade is a business asset marketplace for buying and selling commercial assets, surplus inventory, industrial equipment, office equipment, and related B2B items.
+
+Core idea
+- It is not a retail shopping site.
+- Listings are tied to business identity and platform workflows.
+- Users move from discovery to interest, negotiation, quote, reservation, and payment.
+
+Main roles
+- Guest: browse public marketplace and public business pages.
+- Buyer: compare assets, send interest, negotiate, and pay.
+- Seller: create businesses, post assets, manage leads, and review analytics.
+- Admin: supervise users, businesses, orders, and support.
+
+Core workflows
+1. Register or sign in.
+2. Create or choose a business.
+3. Post assets under that business.
+4. Browse the marketplace and inspect listings.
+5. Use the dashboard to manage leads, listings, and analytics.
+6. Move accepted deals toward quote, reservation, checkout, and completion.
+
+Key platform nouns
+- business
+- asset
+- listing
+- interest
+- quote
+- reservation
+- checkout
+- payment
+- lead
+- dashboard
+- profile
+
+Important routes and areas
+- /home
+- /marketplace
+- /profile
+- /agent
+- /checkout
+- /my-businesses
+- /post-asset
+- /dashboard
+- /admin
+
+How the AI should use this file
+- Use it as the top-level summary of what TrustTrade is.
+- If a question is about a specific page, flow, or role, use the dedicated page doc for details.

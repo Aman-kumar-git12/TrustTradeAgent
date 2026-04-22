@@ -1,0 +1,49 @@
+Checkout and Payment
+
+Purpose
+Checkout is the payment and transaction completion layer of TrustTrade.
+
+Main route
+- /checkout
+
+What the checkout page does
+- shows a secure Razorpay payment screen
+- asks the logged-in user to continue
+- loads the Razorpay SDK
+- starts a payment flow
+
+Checkout UI behavior
+- displays a subscription-style payment card
+- shows amount due
+- uses a secure payment call to Razorpay
+
+Agent payment flow
+The AI agent purchase mode uses backend transaction APIs for a live deal flow:
+- create quote
+- reserve inventory
+- create payment order
+- complete purchase
+
+Agent backend routes
+- POST /api/agent/quote
+- POST /api/agent/reserve
+- POST /api/agent/payment-order
+- POST /api/agent/complete-purchase
+- POST /api/agent/cancel
+
+What happens after payment
+- Node backend verifies the transaction
+- the purchase is finalized in the backend
+- the agent session can be marked complete
+
+Why it matters
+- Checkout turns interest into a completed transaction.
+- It is the last stage of the buyer flow.
+
+Useful AI keywords
+- payment
+- Razorpay
+- reserve inventory
+- quote
+- complete purchase
+- secure checkout

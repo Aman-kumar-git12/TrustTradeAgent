@@ -1,0 +1,46 @@
+Business Management
+
+Purpose
+Business management is the seller workflow for creating and maintaining a business identity on TrustTrade.
+
+Main routes
+- /my-businesses
+- /my-businesses/new
+- /my-businesses/:id
+- /businessdetails/:businessId
+- /businessdetails/:businessId/listings
+
+Backend routes
+- GET /api/businesses
+- POST /api/businesses
+- PUT /api/businesses/:id
+- DELETE /api/businesses/:id
+- GET /api/businesses/:id
+- GET /api/businesses/:id/assets
+
+Business fields in the data model
+- owner
+- businessName
+- images
+- location.city
+- location.place
+- description
+
+What sellers can do
+- list all their businesses
+- create a new business
+- edit a business
+- delete a business
+- inspect public business pages
+- attach assets to a business
+
+Why it matters
+- TrustTrade listings are tied to businesses, not just user accounts.
+- Business context improves trust and makes listings feel real.
+
+Useful AI keywords
+- manage business
+- create business
+- business profile
+- public business page
+- business assets

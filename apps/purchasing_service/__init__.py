@@ -1,0 +1,2 @@
+"""Purchasing service package."""
+

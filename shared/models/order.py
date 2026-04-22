@@ -1,0 +1,2 @@
+"""Shared order model stub."""
+

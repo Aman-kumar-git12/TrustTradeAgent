@@ -8,7 +8,7 @@ ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
     sys.path.append(str(ROOT))
 
-from app.services.knowledge_service import KnowledgeService
+from apps.chat_service.services.knowledge_service import KnowledgeService
 
 
 class KnowledgeServiceTests(unittest.TestCase):

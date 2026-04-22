@@ -1,0 +1,2 @@
+"""Shared asset model stub."""
+

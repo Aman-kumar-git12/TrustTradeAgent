@@ -1,0 +1,44 @@
+Profile
+
+Purpose
+Profile is the account identity and trust management page.
+
+Main route
+- /profile
+
+Who uses it
+- buyers
+- sellers
+- admins depending on access
+
+What it contains
+- full name
+- email
+- phone
+- description
+- password update
+- avatar or profile image
+- visible role badge
+- related business links for sellers
+
+How it works
+- Loads the authenticated user profile from the backend.
+- Loads the user's businesses.
+- Allows editing profile fields and saving changes.
+
+Image workflow
+1. User selects an image.
+2. The image is uploaded.
+3. The returned URL is saved in the profile update request.
+4. The avatar updates in the UI.
+
+Why it matters
+- TrustTrade is a business platform, so identity quality matters.
+- Buyers and sellers use profile details to judge trust.
+
+Useful AI keywords
+- account settings
+- identity
+- avatar
+- contact details
+- profile image

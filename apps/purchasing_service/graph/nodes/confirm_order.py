@@ -1,0 +1,2 @@
+"""Confirm order node stub."""
+

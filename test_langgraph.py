@@ -14,7 +14,7 @@ workflow = StateGraph(State)
 workflow.add_node("node1", node1)
 workflow.set_entry_point("node1")
 
-# This is how it is currently in purchase_graph.py (after my fix)
+# This is how it is currently in the purchase graph builder
 workflow.add_conditional_edges(
     "node1",
     router,

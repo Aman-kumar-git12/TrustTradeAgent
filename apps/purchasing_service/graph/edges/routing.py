@@ -1,0 +1,2 @@
+"""Routing edge stub."""
+

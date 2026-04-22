@@ -12,10 +12,10 @@ ROOT_DIR = Path(__file__).resolve().parents[1]
 if str(ROOT_DIR) not in sys.path:
     sys.path.insert(0, str(ROOT_DIR))
 
-OUTPUT_PATH = ROOT_DIR / 'app' / 'data' / 'website_embeddings.json'
+OUTPUT_PATH = ROOT_DIR / 'apps' / 'chat_service' / 'data' / 'website_embeddings.json'
 VECTOR_SIZE = 192
 
-from app.data.project_index import load_project_records
+from apps.chat_service.data.project_index import load_project_records
 
 
 def tokenize(text: str) -> List[str]:

@@ -1,0 +1,46 @@
+AI Agent
+
+Purpose
+The AI agent helps users navigate TrustTrade and can also run the buying workflow.
+
+Main frontend route
+- /agent
+
+Main backend entrypoint
+- Node route: /api/agent/chat
+- Python agent route: /api/chat
+
+Two modes
+- conversation: general TrustTrade guidance and platform help
+- agent: structured purchase flow with asset discovery, quote, reservation, and payment
+
+Conversation mode flow
+1. Node receives the chat message.
+2. Node stores session history in MongoDB.
+3. Node forwards the message to the Python agent.
+4. Python loads context, checks intent, retrieves knowledge, and generates a reply.
+5. Node stores the assistant response and returns it to the frontend.
+
+Agent mode flow
+1. User asks to buy or search for an asset.
+2. The LangGraph purchase flow runs.
+3. The Python side can call Node internal agent tools.
+4. Node executes search, quote, reserve, payment order, and completion actions.
+5. The final reply is returned to the frontend.
+
+Tool and safety layers
+- moderation checks unsafe input/output
+- grounding keeps responses tied to TrustTrade context
+- tool service connects Python to Node for live transaction actions
+
+Session ownership
+- Node owns long-term chat/session persistence.
+- Python owns request-time reasoning and generation.
+
+Useful AI keywords
+- chat agent
+- conversation mode
+- agent mode
+- purchase flow
+- grounding
+- moderation

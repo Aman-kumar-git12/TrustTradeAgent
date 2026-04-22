@@ -1,148 +1,113 @@
-# 🤖 TrustTrade Strategic AI Agent
+# TrustTrade AI Agent 🚀
 
-High-performance, semantic-aware LLM service designed for business asset transactions on the TrustTrade platform.
+Python AI layer for TrustTrade. This service handles chat reasoning, retrieval, and strategic business workflows using a **Pure LLM-First** functional architecture.
 
-## 🏗️ Architecture Overview
+## 🌟 Key Features
 
-The agent operates as a **Strategic Partner** service, using a "Single Source of Truth" knowledge base and semantic vector retrieval.
+- **Brain-in-a-Box**: Consolidated "Master Chain" that handles intent, grounding, and formatting in a single LLM pass.
+- **Dynamic Formatting**: Automatically switches between `short`, `paragraph`, and `step-by-step` responses based on user needs.
+- **Rich Aesthetics**: Built-in support for Emojis and Rich Markdown (headers, bolding, blockquotes) for a premium interface.
+- **Persona-Aware**: Tailors responses based on the user's name and role (Member/Seller).
+- **Proactive Fallbacks**: Custom fallback chain for out-of-scope requests or system errors.
 
-1.  **Knowledge Source**: Raw platform documentation is maintained in human-editable `.txt` files within `app/data/`.
-2.  **Vector Ingestion**: The `scripts/vectorize_knowledge.py` utility chunks these text files and generates 384-dimensional embeddings (using the `all-MiniLM-L6-v2` transformer), storing them in MongoDB.
-3.  **Semantic Retrieval**: During conversation, the agent performs a similarity search across these embeddings to inject relevant platform context into the LLM prompt.
-4.  **Interface**: A FastAPI server (port 8000) provides the chat endpoint used by the Node.js backend.
+## 🏗️ Architecture
 
----
+- `api/` - FastAPI endpoints and server lifecycle logic.
+- `apps/chat_service/` - Orchestration, Knowledge retrieval, and Master/Fallback chains.
+- `apps/purchasing_service/` - Strategic buying workflows using LangGraph.
+- `shared/` - Pydantic schemas and global configuration.
 
-## 🔄 Conversational Mode Flow
+## 📊 Request Flow
 
-The `/api/chat` endpoint supports both `conversation` mode and `agent` mode. The flow below describes the `conversation` path:
+### 1. Conversation Mode
+1. **Frontend / Node**: Message received and stored; forwarded to Python Agent.
+2. **Knowledge Retrieval**: LangChain-native vector search finds relevant context from MongoDB.
+3. **Master Reasoning**: 
+    - LLM analyzes context, user profile, and history.
+    - LLM detects **Intent** and chooses the best **Format Type**.
+    - LLM generates a structured JSON response.
+4. **Validation**: Orchestrator validates the result against the `AgentReply` schema.
+5. **Return**: Structured reply sent back to Node for frontend rendering.
 
-```text
-Client / Frontend
-    |
-    v
-POST /api/chat
-    |
-    v
-FastAPI route in main.py
-    |
-    v
-ChatService.handle(request)
-    |
-    +--> Normalize request into ChatRequest
-    |
-    +--> If mode == "agent"
-    |        |
-    |        +--> Route to LangGraph purchase flow
-    |
-    v
-Conversation mode
-    |
-    +--> Read user role, session id, and recent history
-    |
-    +--> Build retrieval query
-    |        current message + recent history
-    |
-    +--> Detect intent, active topics, and reply format
-    |
-    +--> Greeting check
-    |        |
-    |        +--> Return source="greeting"
-    |
-    +--> Capability question check
-    |        |
-    |        +--> Return source="capability"
-    |
-    v
-KnowledgeService.search(retrieval_query)
-    |
-    +--> Fetch TrustTrade semantic context from vector knowledge
-    |
-    v
-GroundingEngine.extract_grounded_items(...)
-    |
-    +--> No grounded items found
-    |        |
-    |        +--> Return source="scope-guard"
-    |             LLM is not called
-    |
-    v
-Build conversation system prompt
-    |
-    +--> Add role, intent, topics, TrustTrade context,
-    |    and strict JSON response instructions
-    |
-    v
-TrustTradeAgent.chat(...)
-    |
-    v
-Groq model response
-    |
-    +--> Valid JSON parsed
-    |        |
-    |        +--> Return source="python-agent"
-    |
-    +--> LLM call or JSON parse fails
-             |
-             +--> Return source="fallback-grounding"
+### 2. Sequence Diagram
+
+```mermaid
+sequenceDiagram
+    autonumber
+    actor User
+    participant API as Node Backend
+    participant DB as MongoDB
+    participant Py as Python Agent
+    participant KB as Knowledge Service
+    participant Master as Master Chain (LLM)
+    participant Fallback as Fallback Chain (LLM)
+
+    User->>API: Send Message
+    API->>DB: Persist User Message
+    API->>Py: Forward POST /api/chat
+    
+    Py->>KB: search_knowledge(user_query)
+    KB->>DB: Vector Search (HuggingFace Embeddings)
+    DB-->>KB: Relevant snippets
+    KB-->>Py: Context String
+    
+    rect rgb(240, 248, 255)
+    Note right of Py: Master Reasoning Block
+    Py->>Master: ainvoke(context, history, profile)
+    
+    critical LLM Processing
+        Master->>Master: Detect Intent
+        Master->>Master: Choose Format (Short/Para/Steps)
+        Master->>Master: Ground with Context
+        Master->>Master: Apply Aesthetics (Emojis/Markdown)
+    end
+    
+    alt Success (JSON)
+        Master-->>Py: {reply, intent, format_type, quick_replies}
+    else Error / Out-of-Scope
+        Py->>Fallback: run_fallback_chain(reason)
+        Fallback-->>Py: Dynamic explanation string
+    end
+    end
+
+    Py-->>API: AgentReply (Structured JSON)
+    API->>DB: Persist Assistant Message
+    API-->>User: Render Vibrant Response
 ```
 
-### Response Sources
+## 📜 Data Contract (AgentReply)
 
-These `source` values help explain how a conversational reply was produced:
+Every response from the agent follows this strict Pydantic schema:
 
-- `greeting`: Fast-path greeting response.
-- `capability`: Fast-path capability/help response.
-- `scope-guard`: The request looked out of scope or lacked grounded TrustTrade context.
-- `python-agent`: Normal conversational LLM response.
-- `fallback-grounding`: The model failed, so a grounded fallback response was returned.
+| Field | Type | Description |
+| :--- | :--- | :--- |
+| `reply` | `string` | The main conversational text (contains Markdown and Emojis). |
+| `intent` | `string` | Detected user purpose (e.g., `listing`, `general`, `support`). |
+| `format_type`| `string` | `short`, `paragraph`, or `steps`. |
+| `quick_replies`| `array` | List of suggested button labels for the user. |
+| `source` | `string` | Source identifier (default: `python-agent`). |
 
 ---
 
-## 🛠️ Setup & Operations
+## 🛠️ Setup & Development
 
-### 1. Requirements
-Ensure you have the required Python dependencies:
 ```bash
+# Install dependencies
 cd Agent
 pip install -r requirements.txt
+
+# Run the agent in reload mode
+python3 main.py
 ```
 
-### 2. Environment Configuration
-Create or update `Agent/.env` with the following:
-- `GROQ_API_KEY`: Your Groq platform key.
-- `MONGODB_URI`: Connection string for the knowledge store.
-- `DATABASE_NAME`: (e.g., `assetdirect`)
-- `KNOWLEDGE_COLLECTION_NAME`: (typically `knowledges`)
-
-### 3. Knowledge Vectorization
-Run this script whenever you update the `.txt` files in `app/data/` to refresh the semantic brain:
+### Knowledge Rebuild
+Update files in `apps/chat_service/data/` then run:
 ```bash
-python3 scripts/vectorize_knowledge.py
+python3 scripts/build_website_embeddings.py
 ```
 
-### 4. Running the Service
-Start the FastAPI server using the absolute-path-aware startup script:
-```bash
-./start_agent.sh
-```
-
----
-
-## 🧠 System Design Features
-
-- **Lazy Initialization**: The server boots instantly. Heavy AI dependencies (models/database) are loaded on-demand during the first request.
-- **Fault Tolerance**: If the knowledge base is offline, the agent continues to provide strategic advice based on its internal logic rather than failing.
-- **Transparent Status**: Check the health and initialization state of the AI layer at:
-  - `GET http://localhost:8000/health`
-
----
-
-## 📁 Repository Structure
-
-- `scripts/`: Manual utilities for data ingestion and vectorization.
-- `app/config/`: Centralized settings module (pydantic-style).
-- `app/core/`: Strategic LLM logic and prompt engineering.
-- `app/data/`: **Single Source of Truth** for platform intelligence (Text files).
-- `app/services/`: Knowledge retrieval and orchestration services.
-- `app/schemas/`: Typed Request/Response models.
+## 📂 Core Runtime Files
+- [api/main.py](./api/main.py) - Entrypoint
+- [apps/chat_service/services/chat_service.py](./apps/chat_service/services/chat_service.py) - Orchestrator
+- [apps/chat_service/chains/master_chain.py](./apps/chat_service/chains/master_chain.py) - Core Brain
+- [apps/chat_service/chains/fallback_reply.py](./apps/chat_service/chains/fallback_reply.py) - Fallbacks

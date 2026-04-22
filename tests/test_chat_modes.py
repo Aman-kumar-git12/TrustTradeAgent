@@ -9,9 +9,9 @@ ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
     sys.path.append(str(ROOT))
 
-from app.schemas.chat import ChatRequest, UserInfo
-from app.services.chat_service import ChatService
-from app.services.tool_service import ToolService
+from shared.schemas.chat import ChatRequest, UserInfo
+from apps.chat_service.services.chat_service import ChatService
+from apps.purchasing_service.services.tool_service import ToolService
 
 
 class ChatModeSeparationTests(unittest.TestCase):

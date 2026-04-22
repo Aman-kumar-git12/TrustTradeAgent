@@ -9,8 +9,8 @@ sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from pymongo import MongoClient
 from sentence_transformers import SentenceTransformer
-from app.config.settings import settings
-from app.data.project_index import load_project_records
+from shared.config.settings import settings
+from apps.chat_service.data.project_index import load_project_records
 
 MONGODB_URI = settings.mongodb_uri
 DATABASE_NAME = settings.database_name
@@ -47,7 +47,7 @@ def vectorize():
     collection = db[COLLECTION_NAME]
     
     # Find all .txt files in data directory
-    data_dir = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), 'app', 'data')
+    data_dir = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), 'apps', 'chat_service', 'data')
     txt_files = glob.glob(os.path.join(data_dir, "*.txt"))
     
     if not txt_files:

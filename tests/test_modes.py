@@ -4,12 +4,12 @@ import json
 import unittest
 from unittest.mock import MagicMock, patch
 
-from app.graph.purchase_graph import create_purchase_graph
-from app.graph.nodes.extract_constraints import extract_constraints
-from app.graph.nodes.search_assets import search_assets
-from app.schemas.chat import AgentReply, ChatRequest, UserInfo
-from app.services.chat_service import ChatService
-from app.services.tool_service import ToolService
+from apps.purchasing_service.graph.builder import create_purchase_graph
+from apps.purchasing_service.graph.nodes.extract_constraints import extract_constraints
+from apps.purchasing_service.graph.nodes.search_assets import search_assets
+from shared.schemas.chat import AgentReply, ChatRequest, UserInfo
+from apps.chat_service.services.chat_service import ChatService
+from apps.purchasing_service.services.tool_service import ToolService
 
 
 class InMemoryStrategicSessionService:
@@ -421,7 +421,7 @@ class ChatServiceModeTests(unittest.TestCase):
             }
         ]
 
-        with patch("app.graph.nodes.extract_constraints.TrustTradeAgent.chat", side_effect=RuntimeError("llm offline")):
+        with patch("apps.purchasing_service.graph.nodes.extract_constraints.TrustTradeAgent.chat", side_effect=RuntimeError("llm offline")):
             reply = ChatService.handle(
                 service,
                 ChatRequest(
@@ -564,7 +564,7 @@ class ChatServiceModeTests(unittest.TestCase):
         self.assertIn("couldn't reach", result["reply"].lower())
         self.assertEqual(result["metadata"]["backendError"]["status"], 503)
 
-    @patch("app.graph.nodes.search_assets.time.sleep", return_value=None)
+    @patch("apps.purchasing_service.graph.nodes.search_assets.time.sleep", return_value=None)
     def test_search_node_retries_empty_backend_response_before_failing(
         self,
         _mock_sleep: MagicMock,
@@ -686,7 +686,7 @@ class ChatServiceModeTests(unittest.TestCase):
         self.assertEqual(mock_search_assets.call_args.kwargs["budgetMax"], 10000.0)
 
     def test_extract_constraints_maps_office_to_office_equipment_category(self) -> None:
-        with patch("app.graph.nodes.extract_constraints.TrustTradeAgent.chat", side_effect=RuntimeError("llm offline")):
+        with patch("apps.purchasing_service.graph.nodes.extract_constraints.TrustTradeAgent.chat", side_effect=RuntimeError("llm offline")):
             result = extract_constraints(
                 {
                     "query": "office",
@@ -729,7 +729,7 @@ class ChatServiceModeTests(unittest.TestCase):
         self.assertEqual(mock_search_assets.call_args.kwargs["category"], "Office Equipment")
 
     @patch.object(ToolService, "search_assets", return_value=[])
-    @patch("app.graph.nodes.search_assets.TrustTradeAgent.chat")
+    @patch("apps.purchasing_service.graph.nodes.search_assets.TrustTradeAgent.chat")
     def test_search_node_clears_stale_shortlist_state_on_empty_results(
         self,
         mock_agent_chat: MagicMock,

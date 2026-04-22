@@ -1,0 +1,43 @@
+Negotiation
+
+Purpose
+Negotiation is the TrustTrade workflow for buyers and sellers to discuss price, quantity, and deal terms before payment.
+
+Where it starts
+- Asset details page
+- User chooses either Express Interest or Begin Negotiation
+
+What the buyer can do
+- write a message describing the offer or negotiation goal
+- mention quantity if relevant
+- submit the interest as a negotiating request
+
+What the backend stores
+- assetId
+- buyer message
+- quantity
+- status = negotiating
+- negotiationStartDate when the status changes into negotiation
+
+What the seller can do
+- review the lead in the seller dashboard
+- accept the negotiation
+- reject the negotiation
+- keep negotiating through the lead workflow
+
+How the AI agent should explain it
+- Do not invent buttons that do not exist in the app.
+- Do not mention Message Seller or Make an Offer unless the UI actually exposes them.
+- Use the real TrustTrade language: Express Interest, Begin Negotiation, negotiating lead, accepted, rejected, quote, reservation, and checkout.
+
+Agent purchase mode negotiation
+- In agent mode, the purchase graph can record negotiation words through the backend negotiation API.
+- The negotiation step is part of the structured buying flow before quote, reservation, and payment.
+
+Useful AI keywords
+- express interest
+- begin negotiation
+- negotiating lead
+- accepted offer
+- rejected offer
+- negotiation start date
