@@ -6,8 +6,8 @@ Dashboard is the role-based operational control area of TrustTrade. It is not on
 Main dashboard routing behavior
 The central dashboard route checks the authenticated user role and redirects:
 - admin -> /admin
-- seller -> /dashboard/seller
-- buyer -> /dashboard/buyer/:userId
+- seller -> /dashboard/seller/select (Seller Hub)
+- buyer -> /dashboard/buyer/:userId/orders (My Orders)
 - unknown/default -> /home
 
 This means Dashboard is both:
@@ -25,10 +25,9 @@ Main routes
 - deeper routes under leads, listings, and analytics
 
 How Seller Dashboard is working
-1. When a seller enters /dashboard/seller, the app tries to find the seller's businesses.
-2. If there is a remembered business in local storage, it may redirect there.
-3. If businesses exist, the user is redirected into the selected business dashboard.
-4. If no business exists, the user is redirected to the business selection or creation flow.
+1. When a seller enters /dashboard/seller, the app always redirects to the Seller Hub (Business Selection).
+2. This allows the seller to explicitly choose or create the business they want to manage.
+3. Once a business is selected, the seller enters the specific leads and analytics associated with it.
 
 What Seller Dashboard contains
 - active business switcher
@@ -70,10 +69,10 @@ What it contains
 - payment actions for accepted deals
 
 How Buyer Dashboard is working
-1. Buyer sends or maintains interest in listings.
-2. Dashboard shows the current status of those interests.
-3. If the seller accepts or the process advances, the buyer sees next steps.
-4. Buyer can move toward payment for accepted deals.
+1. By default, the buyer lands on the **My Orders** tab to track finalized transactions.
+2. The dashboard also contains a **My Interests** tab for active negotiations.
+3. If the process advances, the buyer see next steps like payment or shipment tracking.
+4. Buyer can move toward payment directly from order or interest cards.
 
 Why Buyer Dashboard matters
 It converts marketplace interest into a structured buyer workflow and helps prevent deal confusion after the initial listing view.

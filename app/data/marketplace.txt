@@ -18,6 +18,7 @@ What Marketplace contains
 - category filtering
 - minimum and maximum price filtering
 - condition filtering
+- Apply/Clear filter buttons for explicit search control
 - asset cards that summarize important listing information
 - filter panel behavior connected to route state
 - infinite scrolling behavior for loading more results

@@ -1,5 +1,4 @@
-from __future__ import annotations
-
+import sys
 import threading
 import uvicorn
 from contextlib import asynccontextmanager
@@ -9,6 +8,15 @@ from fastapi.middleware.cors import CORSMiddleware
 from app.config.settings import settings
 from app.services.chat_service import ChatService
 from app.schemas.chat import ChatRequest, AgentReply
+
+# ⚠️ Python 3.14 Compatibility Guard
+if sys.version_info >= (3, 14):
+    print("------------------------------------------------------------------")
+    print("⚠️  WARNING: Running on Python 3.14 or greater.")
+    print("   Pydantic V1 (used by LangChain/LangGraph) is known to have")
+    print("   compatibility issues with this Python version.")
+    print("   If the agent hangs or crashes, consider using Python 3.12.")
+    print("------------------------------------------------------------------")
 
 
 @asynccontextmanager
