@@ -39,4 +39,7 @@ echo "   Python  : $PYTHON"
 echo "   Dir     : $SCRIPT_DIR"
 echo ""
 
-exec "$PYTHON" -m uvicorn main:app --host 0.0.0.0 --port 8000 --reload
+# Use Render's PORT or default to 8000
+TARGET_PORT="${PORT:-8000}"
+
+exec "$PYTHON" -m uvicorn main:app --host 0.0.0.0 --port "$TARGET_PORT" --reload
