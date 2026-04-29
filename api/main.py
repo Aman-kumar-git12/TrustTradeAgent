@@ -98,6 +98,7 @@ async def agent_strategic_chat(request: ChatRequest):
         raise HTTPException(status_code=500, detail=str(e))
 
 if __name__ == "__main__":
-    port = int(os.getenv("AGENT_PORT", "8000"))
-    debug = os.getenv("DEBUG", "true").lower() == "true"
+    # Cloud providers (like Render) inject PORT. Fallback to AGENT_PORT or 8000.
+    port = int(os.getenv("PORT", os.getenv("AGENT_PORT", "8000")))
+    debug = os.getenv("DEBUG", "false").lower() == "true"
     uvicorn.run("main:app", host="0.0.0.0", port=port, reload=debug)
