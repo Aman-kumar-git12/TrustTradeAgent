@@ -41,6 +41,35 @@ graph TD
     Payment --> Success((Order Completed))
 ```
 
+### 🔄 Interaction Sequence
+
+```mermaid
+sequenceDiagram
+    participant U as User
+    participant A as AI Agent (LangGraph)
+    participant B as Backend (Express)
+    participant L as LLM (Groq)
+
+    U->>A: "Find me some laptops"
+    A->>B: GET /assets?category=laptops
+    B-->>A: Asset List
+    A->>U: Present Options (Markdown + Quick Replies)
+    
+    U->>A: Selects Product "X"
+    A->>U: Details & Quantity Prompt
+    
+    U->>A: "I'll offer ₹50,000"
+    A->>B: POST /negotiate (Record Lead/Interest)
+    A->>L: Rationalize Offer vs List Price
+    L-->>A: Accepted / Counter-offer JSON
+    A->>U: Counter-offer & Bill Breakdown
+    
+    U->>A: "Buy Now"
+    A->>B: POST /payment/create-order
+    B-->>A: Razorpay Order ID
+    A->>U: Final Bill & Secure Checkout
+```
+
 ## 📜 Data Contract (AgentReply)
 
 Every response follows a strict schema for frontend compatibility:
