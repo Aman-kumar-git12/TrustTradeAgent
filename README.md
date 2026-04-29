@@ -22,23 +22,15 @@ Python-powered agentic layer for TrustTrade. This service handles advanced reaso
 The agent operates as a directed graph where each node represents a specific business logic state.
 
 ```mermaid
-graph TD
-    Start((Start)) --> Detect[router_node]
-    Detect -- "Browsing" --> Category[category_node]
-    Detect -- "Searching" --> Search[search_assets]
-    Detect -- "Negotiating" --> Negotiate[negotiate_node]
-    
-    Category --> Search
-    Search --> Rank[rank_assets]
-    Rank --> Present[present_options]
-    
-    Present -- "Select" --> Details[details_node]
-    Details -- "Buy" --> Bill[bill_node]
-    Details -- "Better Price" --> Negotiate
-    
-    Negotiate -- "Accepted" --> Bill
-    Bill --> Payment[payment_node]
-    Payment --> Success((Order Completed))
+graph LR
+    Start((Start)) --> R[Router]
+    R -- "Browse" --> C[Category]
+    R -- "Search" --> S[Search]
+    R -- "Negot" --> N[Negotiate]
+    C --> S --> Rank[Rank] --> P[Present]
+    P -- "Select" --> D[Details] --> B[Bill]
+    P -- "Negot" --> N -- "Accept" --> B
+    B --> Pay[Payment] --> End((Done))
 ```
 
 ### 🔄 Interaction Sequence
@@ -46,28 +38,28 @@ graph TD
 ```mermaid
 sequenceDiagram
     participant U as User
-    participant A as AI Agent (LangGraph)
-    participant B as Backend (Express)
-    participant L as LLM (Groq)
+    participant A as Agent
+    participant B as Backend
+    participant L as LLM
 
-    U->>A: "Find me some laptops"
-    A->>B: GET /assets?category=laptops
-    B-->>A: Asset List
-    A->>U: Present Options (Markdown + Quick Replies)
+    U->>A: "Find Laptops"
+    A->>B: GET /assets
+    B-->>A: Data
+    A->>U: Options
     
-    U->>A: Selects Product "X"
-    A->>U: Details & Quantity Prompt
+    U->>A: Select "X"
+    A->>U: Details
     
-    U->>A: "I'll offer ₹50,000"
-    A->>B: POST /negotiate (Record Lead/Interest)
-    A->>L: Rationalize Offer vs List Price
-    L-->>A: Accepted / Counter-offer JSON
-    A->>U: Counter-offer & Bill Breakdown
+    U->>A: "Offer ₹50k"
+    A->>B: Log Interest
+    A->>L: Counter-offer
+    L-->>A: Offer
+    A->>U: New Offer
     
-    U->>A: "Buy Now"
-    A->>B: POST /payment/create-order
-    B-->>A: Razorpay Order ID
-    A->>U: Final Bill & Secure Checkout
+    U->>A: "Buy"
+    A->>B: Create Order
+    B-->>A: Order ID
+    A->>U: Checkout
 ```
 
 ## 📜 Data Contract (AgentReply)
