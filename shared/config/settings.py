@@ -37,7 +37,7 @@ class Settings:
     warmup_api_key: str = os.getenv('AGENT_WARMUP_KEY', '')
     
     # Backend Integration
-    backend_api_url: str = os.getenv('BACKEND_API_URL', 'http://localhost:5001')
+    backend_api_url: str = os.getenv('BACKEND_API_URL', 'http://localhost:5002')
     agent_internal_key: str = os.getenv('AGENT_INTERNAL_KEY', 'trusttrade-local-agent')
     backend_request_timeout_seconds: float = float(os.getenv('BACKEND_REQUEST_TIMEOUT_SECONDS', '10'))
     backend_empty_search_retries: int = int(os.getenv('BACKEND_EMPTY_SEARCH_RETRIES', '2'))
