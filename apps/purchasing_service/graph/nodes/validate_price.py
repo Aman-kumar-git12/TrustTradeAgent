@@ -1,2 +1,0 @@
-"""Validate price node stub."""
-

@@ -61,3 +61,5 @@ class ChatRequest(BaseModel):
     history: List[ChatMessage] = Field(default_factory=list)
     session_id: Optional[str] = Field(None, alias='sessionId')
     metadata: Optional[dict] = Field(default_factory=dict)
+    action: Optional[str] = None
+    payload: Optional[dict] = Field(default_factory=dict)

@@ -1,2 +1,0 @@
-"""Graph edges and conditions."""
-

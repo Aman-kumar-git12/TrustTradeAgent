@@ -4,46 +4,44 @@ from typing import TypedDict, List, Optional, Literal, Dict, Any
 class AgentPurchaseState(TypedDict, total=False):
     """
     Complete state schema for the Strategic Agent Purchase Lifecycle.
-    Used by LangGraph to track transitions and maintain conversational context.
     """
     sessionId: str
     userId: str
     mode: Literal['conversation', 'agent']
-    step: Literal[
-        'idle',
-        'collecting_filters',
-        'showing_options',
-        'awaiting_selection',
-        'awaiting_quantity',
-        'quoted',
-        'awaiting_confirmation',
-        'payment_created',
-        'payment_pending',
-        'payment_verified',
-        'order_completed',
-        'cancelled',
-        'failed'
-    ]
-
-    intent: Optional[Literal['browse', 'buy', 'compare']]
-    category: Optional[str]
-    query: Optional[str]
-    searchTerm: Optional[str]
-    budgetMax: Optional[float]
-    quantity: Optional[int]
-    assetIds: Optional[List[str]]
-    selectedAssetId: Optional[str]
-    reservationId: Optional[str]
-    quoteId: Optional[str]
-    paymentIntentId: Optional[str]
-    orderId: Optional[str]
-    lastError: Optional[str]
-    expiresAt: Optional[str]
     
-    # Audit trail and explainability
-    history: List[dict]
-    explanation: Optional[str]
-    confidence: float # 0.0 to 1.0
-    metadata: Dict[str, Any]
+    # Sequence Tracking
+    next_action: Optional[str] # The intent detected by LLM
+    previous_node: Optional[str] # For returning after interruptions
+    current_node: Optional[str] # Current position in the flowchart
+    browse_category: Optional[str]
+    present_offset: Optional[int]
+    available_categories: Optional[List[str]]
+    action: Optional[str]
+    payload: Optional[Dict[str, Any]]
+
+    
+    # State Data
+    query: Optional[str]
+    category: Optional[str]
+    budgetMax: Optional[float]
+    
+    assets: Optional[List[dict]]
+    selected_asset: Optional[dict]
+    quantity: Optional[int]
+    
+    quotation: Optional[dict]
+    reservation_id: Optional[str]
+    
+    proposal: Optional[dict] # For negotiation
+    
+    payment_order: Optional[dict]
+    payment_status: Optional[str] # pending, success, failed
+    
+    order_id: Optional[str]
+    
+    # Communication
+    messages: List[dict] # Standard ChatML-style list
     reply: str
     quickReplies: List[str]
+    metadata: Dict[str, Any]
+    lastError: Optional[str]

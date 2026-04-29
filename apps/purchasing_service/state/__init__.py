@@ -1,2 +1,2 @@
-"""Purchase state package."""
+from .purchase_state import AgentPurchaseState
 

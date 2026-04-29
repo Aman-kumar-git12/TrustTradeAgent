@@ -1,91 +1,56 @@
 # TrustTrade AI Agent 🚀
 
-Python AI layer for TrustTrade. This service handles chat reasoning, retrieval, and strategic business workflows using a **Pure LLM-First** functional architecture.
+Python-powered agentic layer for TrustTrade. This service handles advanced reasoning, multi-node workflows, and RAG-based business intelligence using a **LangGraph-driven** architecture.
 
 ## 🌟 Key Features
 
-- **Brain-in-a-Box**: Consolidated "Master Chain" that handles intent, grounding, and formatting in a single LLM pass.
-- **Dynamic Formatting**: Automatically switches between `short`, `paragraph`, and `step-by-step` responses based on user needs.
-- **Rich Aesthetics**: Built-in support for Emojis and Rich Markdown (headers, bolding, blockquotes) for a premium interface.
-- **Persona-Aware**: Tailors responses based on the user's name and role (Member/Seller).
-- **Proactive Fallbacks**: Custom fallback chain for out-of-scope requests or system errors.
+- **Strategic AI Negotiator**: A specialized node that manages price negotiations using rational counter-offers and market-aware reasoning.
+- **RAG-based Grounding**: Retrieval-Augmented Generation using LangChain and MongoDB Vector Search to provide accurate, context-aware answers about business assets.
+- **Agentic Workflow**: A persistent state machine (LangGraph) that guides users through the entire lifecycle: Discovery → Selection → Negotiation → Billing.
+- **Master Chain Reasoning**: Consolidated "Master Chain" that handles intent detection, persona-aware grounding, and dynamic formatting in a single pass.
+- **Real-Time Inventory Lock**: Integrated with the backend to reserve assets during the negotiation/checkout phase.
 
 ## 🏗️ Architecture
 
-- `api/` - FastAPI endpoints and server lifecycle logic.
-- `apps/chat_service/` - Orchestration, Knowledge retrieval, and Master/Fallback chains.
-- `apps/purchasing_service/` - Strategic buying workflows using LangGraph.
-- `shared/` - Pydantic schemas and global configuration.
+- `api/` - FastAPI endpoints for seamless integration with the Node.js backend.
+- `apps/chat_service/` - RAG-based conversational engine and general knowledge retrieval.
+- `apps/purchasing_service/` - The core "Strategic Purchasing Agent" implemented as a stateful LangGraph.
+- `shared/` - Pydantic schemas, shared utilities, and global environment configuration.
 
-## 📊 Request Flow
+## 📊 Agentic Workflow (Strategic Purchase)
 
-### 1. Conversation Mode
-1. **Frontend / Node**: Message received and stored; forwarded to Python Agent.
-2. **Knowledge Retrieval**: LangChain-native vector search finds relevant context from MongoDB.
-3. **Master Reasoning**: 
-    - LLM analyzes context, user profile, and history.
-    - LLM detects **Intent** and chooses the best **Format Type**.
-    - LLM generates a structured JSON response.
-4. **Validation**: Orchestrator validates the result against the `AgentReply` schema.
-5. **Return**: Structured reply sent back to Node for frontend rendering.
-
-### 2. Sequence Diagram
+The agent operates as a directed graph where each node represents a specific business logic state.
 
 ```mermaid
-sequenceDiagram
-    autonumber
-    actor User
-    participant API as Node Backend
-    participant DB as MongoDB
-    participant Py as Python Agent
-    participant KB as Knowledge Service
-    participant Master as Master Chain (LLM)
-    participant Fallback as Fallback Chain (LLM)
-
-    User->>API: Send Message
-    API->>DB: Persist User Message
-    API->>Py: Forward POST /api/chat
+graph TD
+    Start((Start)) --> Detect[router_node]
+    Detect -- "Browsing" --> Category[category_node]
+    Detect -- "Searching" --> Search[search_assets]
+    Detect -- "Negotiating" --> Negotiate[negotiate_node]
     
-    Py->>KB: search_knowledge(user_query)
-    KB->>DB: Vector Search (HuggingFace Embeddings)
-    DB-->>KB: Relevant snippets
-    KB-->>Py: Context String
+    Category --> Search
+    Search --> Rank[rank_assets]
+    Rank --> Present[present_options]
     
-    rect rgb(240, 248, 255)
-    Note right of Py: Master Reasoning Block
-    Py->>Master: ainvoke(context, history, profile)
+    Present -- "Select" --> Details[details_node]
+    Details -- "Buy" --> Bill[bill_node]
+    Details -- "Better Price" --> Negotiate
     
-    critical LLM Processing
-        Master->>Master: Detect Intent
-        Master->>Master: Choose Format (Short/Para/Steps)
-        Master->>Master: Ground with Context
-        Master->>Master: Apply Aesthetics (Emojis/Markdown)
-    end
-    
-    alt Success (JSON)
-        Master-->>Py: {reply, intent, format_type, quick_replies}
-    else Error / Out-of-Scope
-        Py->>Fallback: run_fallback_chain(reason)
-        Fallback-->>Py: Dynamic explanation string
-    end
-    end
-
-    Py-->>API: AgentReply (Structured JSON)
-    API->>DB: Persist Assistant Message
-    API-->>User: Render Vibrant Response
+    Negotiate -- "Accepted" --> Bill
+    Bill --> Payment[payment_node]
+    Payment --> Success((Order Completed))
 ```
 
 ## 📜 Data Contract (AgentReply)
 
-Every response from the agent follows this strict Pydantic schema:
+Every response follows a strict schema for frontend compatibility:
 
 | Field | Type | Description |
 | :--- | :--- | :--- |
-| `reply` | `string` | The main conversational text (contains Markdown and Emojis). |
-| `intent` | `string` | Detected user purpose (e.g., `listing`, `general`, `support`). |
-| `format_type`| `string` | `short`, `paragraph`, or `steps`. |
-| `quick_replies`| `array` | List of suggested button labels for the user. |
-| `source` | `string` | Source identifier (default: `python-agent`). |
+| `reply` | `string` | Markdown-formatted text with Emojis and reasoning. |
+| `intent` | `string` | Detected intent (e.g., `negotiate`, `search`, `payment`). |
+| `quick_replies`| `array` | Dynamic buttons (e.g., "Accept Offer", "Try Again"). |
+| `metadata` | `object` | Persistent session state (category, selected_asset, etc). |
 
 ---
 
@@ -96,18 +61,20 @@ Every response from the agent follows this strict Pydantic schema:
 cd Agent
 pip install -r requirements.txt
 
-# Run the agent in reload mode
+# Run the agent (FastAPI)
 python3 main.py
 ```
 
-### Knowledge Rebuild
-Update files in `apps/chat_service/data/` then run:
+### Rebuilding Knowledge Base (RAG)
+To update the knowledge base with new business docs:
+1. Add text/markdown files to `apps/chat_service/data/`.
+2. Run the embedding script:
 ```bash
 python3 scripts/build_website_embeddings.py
 ```
 
 ## 📂 Core Runtime Files
-- [api/main.py](./api/main.py) - Entrypoint
-- [apps/chat_service/services/chat_service.py](./apps/chat_service/services/chat_service.py) - Orchestrator
-- [apps/chat_service/chains/master_chain.py](./apps/chat_service/chains/master_chain.py) - Core Brain
-- [apps/chat_service/chains/fallback_reply.py](./apps/chat_service/chains/fallback_reply.py) - Fallbacks
+- [main.py](./main.py) - FastAPI Entrypoint
+- [apps/purchasing_service/builder.py](./apps/purchasing_service/builder.py) - LangGraph Construction
+- [apps/purchasing_service/router.py](./apps/purchasing_service/router.py) - Intent Orchestration
+- [apps/purchasing_service/nodes/purchase/negotiate_node.py](./apps/purchasing_service/nodes/purchase/negotiate_node.py) - Strategic Negotiator Logic

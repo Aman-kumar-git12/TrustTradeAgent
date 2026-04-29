@@ -7,6 +7,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from shared.config.settings import settings
 from shared.schemas.chat import ChatRequest, AgentReply
 from apps.chat_service.services.chat_service import handle_chat_request
+from apps.purchasing_service.orchestrator import handle_strategic_purchase
 from apps.chat_service.services.knowledge_service import init_knowledge_engine, is_knowledge_healthy
 from apps.chat_service.agents.chat_agent import is_agent_configured
 
@@ -70,9 +71,26 @@ async def health_check():
 async def chat(request: ChatRequest):
     """
     Main chat entry point calling the functional orchestrator.
+    Handles 'conversation' mode by default.
     """
     try:
         response = await handle_chat_request(request)
+        return response
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.post("/api/agent", response_model=AgentReply, response_model_by_alias=True)
+async def agent_strategic_chat(request: ChatRequest):
+    """
+    Dedicated endpoint for the Strategic Purchase Agent flow.
+    Forces 'agent' mode regardless of request payload.
+    """
+    try:
+        # Force agent mode for this endpoint
+        # Directly invoke the Strategic Purchase Orchestrator
+        response = await handle_strategic_purchase(request)
         return response
     except Exception as e:
         import traceback

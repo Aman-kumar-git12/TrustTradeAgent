@@ -1,2 +1,0 @@
-"""Review order node stub."""
-
