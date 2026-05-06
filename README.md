@@ -1,6 +1,6 @@
 # TrustTrade AI Agent 🚀
 
-Python-powered agentic layer for TrustTrade. This service handles advanced reasoning, multi-node workflows, and RAG-based business intelligence using a **LangGraph-driven** architecture.
+Python-powered agentic layer for TrustTrade.This service handles advanced reasoning, multi-node workflows, and RAG-based business intelligence using a **LangGraph-driven** architecture.
 
 ## 🌟 Key Features
 
