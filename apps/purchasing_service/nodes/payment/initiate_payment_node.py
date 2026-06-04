@@ -71,12 +71,6 @@ def initiate_payment_node(state: AgentPurchaseState) -> Dict[str, Any]:
         reply = (
             f"### 💳 Secure Checkout\n\n"
             f"Your order for **{title}** × {quantity} is ready.\n\n"
-            f"| Item | Details |\n"
-            f"|---|---|\n"
-            f"| **Subtotal** | ₹{base_price:,} |\n"
-            f"| **Platform Fee** | ₹{platform_fee:,} |\n"
-            f"| **Tax (18% GST)** | ₹{tax:,} |\n"
-            f"| **Total** | **₹{total:,}** |\n\n"
             f"Click **PAY SECURELY NOW** below to complete your purchase."
         )
 

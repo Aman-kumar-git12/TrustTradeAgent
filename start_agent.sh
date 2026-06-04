@@ -5,7 +5,7 @@ set -e
 SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
 cd "$SCRIPT_DIR"
 
-echo "🚀 Starting TrustTrade AI Agent on port 8000..."
+echo "🚀 Starting TrustTrade AI Agent on port 8001..."
 
 # Python discovery order:
 #  1. Active virtual env (venv / conda activate)
@@ -39,7 +39,15 @@ echo "   Python  : $PYTHON"
 echo "   Dir     : $SCRIPT_DIR"
 echo ""
 
-# Use Render's PORT or default to 8000
-TARGET_PORT="${PORT:-8000}"
+# Load local .env values when present so PORT/BACKEND_API_URL stay in sync.
+if [ -f .env ]; then
+    set -a
+    # shellcheck disable=SC1091
+    . ./.env
+    set +a
+fi
+
+# Use PORT from the environment or default to 8001 for local development.
+TARGET_PORT="${PORT:-8001}"
 
 exec "$PYTHON" -m uvicorn main:app --host 0.0.0.0 --port "$TARGET_PORT" --reload

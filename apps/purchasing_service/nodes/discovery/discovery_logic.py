@@ -27,6 +27,13 @@ def present_logic(assets: List[Dict]) -> (str, List[str]):
     """Formats asset list into a vibrant markdown reply."""
     reply = ""
     for i, asset in enumerate(assets[:3], 1):
-        reply += f"{i}. **{asset['title']}** - ₹{asset['price']}\n   _{asset['description'][:80]}..._\n\n"
+        title = asset['title'].strip()
+        asset_id = asset.get('_id', '')
+        desc = asset.get('description', '')[:80]
+        price = asset['price']
+        if asset_id:
+            reply += f"{i}. [**{title}**](/assets/{asset_id}) - ₹{price}\n   _{desc}..._\n\n"
+        else:
+            reply += f"{i}. **{title}** - ₹{price}\n   _{desc}..._\n\n"
     
     return reply, []
